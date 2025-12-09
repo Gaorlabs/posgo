@@ -18,20 +18,18 @@
             },
             colors: {
               brand: {
-                50: '#eff6ff',
-                100: '#dbeafe',
-                500: '#6366f1', // Indigo
-                600: '#4f46e5', // Indigo Dark
-                700: '#4338ca',
-                900: '#312e81',
+                50: '#f5f3ff',
+                100: '#ede9fe',
+                500: '#8b5cf6', // Violet (Gaor Primary)
+                600: '#7c3aed', // Violet Darker
+                700: '#6d28d9',
+                900: '#4c1d95',
               },
               gaor: {
-                primary: '#6366f1', // Indigo 500
-                secondary: '#ec4899', // Pink 500
-                accent: '#8b5cf6', // Violet 500
-                bg: '#f8fafc', // Slate 50
-                surface: '#ffffff',
-                text: '#1e293b', // Slate 800
+                purple: '#8b5cf6', 
+                pink: '#ec4899',
+                green: '#10b981',
+                dark: '#1e293b',
               }
             },
             animation: {
@@ -67,13 +65,14 @@
     "lucide-react": "https://aistudiocdn.com/lucide-react@^0.556.0",
     "recharts": "https://aistudiocdn.com/recharts@^3.5.1",
     "xlsx": "https://aistudiocdn.com/xlsx@^0.18.5",
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.31.0"
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.31.0",
+    "@supabase/supabase-js": "https://aistudiocdn.com/@supabase/supabase-js@^2.87.1"
   }
 }
 </script>
 <link rel="stylesheet" href="/index.css">
 </head>
-  <body class="bg-slate-50 text-slate-800 antialiased h-screen overflow-hidden selection:bg-indigo-100 selection:text-indigo-700">
+  <body class="bg-slate-50 text-slate-800 antialiased h-screen overflow-hidden selection:bg-violet-100 selection:text-violet-700">
     <div id="root" class="h-full"></div>
     <script type="module" src="/index.tsx"></script>
   </body>
