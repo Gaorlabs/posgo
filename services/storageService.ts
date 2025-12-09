@@ -1,4 +1,4 @@
-import { Product, StoreSettings, Transaction, Purchase, Customer, CashShift, CashMovement, Supplier } from "../types";
+import { Product, StoreSettings, Transaction, Purchase, Customer, CashShift, CashMovement, Supplier, UserProfile } from "../types";
 import { DEFAULT_SETTINGS, INITIAL_PRODUCTS } from "../constants";
 
 const KEYS = {
@@ -10,10 +10,26 @@ const KEYS = {
   SHIFTS: 'kioscopro_shifts',
   MOVEMENTS: 'kioscopro_movements',
   ACTIVE_SHIFT_ID: 'kioscopro_active_shift_id',
-  SUPPLIERS: 'kioscopro_suppliers'
+  SUPPLIERS: 'kioscopro_suppliers',
+  SESSION: 'kioscopro_session' // New Key for Auth persistence
 };
 
 export const StorageService = {
+  // --- Auth Session Management ---
+  getSession: (): UserProfile | null => {
+    const stored = localStorage.getItem(KEYS.SESSION);
+    return stored ? JSON.parse(stored) : null;
+  },
+
+  saveSession: (user: UserProfile) => {
+    localStorage.setItem(KEYS.SESSION, JSON.stringify(user));
+  },
+
+  clearSession: () => {
+    localStorage.removeItem(KEYS.SESSION);
+  },
+
+  // --- Data Management ---
   getProducts: (): Product[] => {
     const stored = localStorage.getItem(KEYS.PRODUCTS);
     return stored ? JSON.parse(stored) : INITIAL_PRODUCTS;
