@@ -1,19 +1,22 @@
+
 import React from 'react';
-import { ViewState, StoreSettings } from '../types';
-import { Store, ShoppingCart, BarChart3, Settings, Menu, PackagePlus, Users, Package, Zap, Rocket, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ViewState, StoreSettings, UserProfile } from '../types';
+import { ShoppingCart, BarChart3, Settings, Menu, PackagePlus, Users, Package, Rocket, ChevronLeft, ChevronRight, ShieldAlert } from 'lucide-react';
 
 interface LayoutProps {
   currentView: ViewState;
   onChangeView: (view: ViewState) => void;
   children: React.ReactNode;
   settings: StoreSettings;
+  user?: UserProfile;
+  onLogout: () => void;
 }
 
-export const Layout: React.FC<LayoutProps> = ({ currentView, onChangeView, children, settings }) => {
+export const Layout: React.FC<LayoutProps> = ({ currentView, onChangeView, children, settings, user, onLogout }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
   const [isCollapsed, setIsCollapsed] = React.useState(false);
 
-  const NavItem = ({ view, icon: Icon, label }: { view: ViewState; icon: any; label: string }) => {
+  const NavItem = ({ view, icon: Icon, label, isAdmin = false }: { view: ViewState; icon: any; label: string, isAdmin?: boolean }) => {
     const isActive = currentView === view;
     return (
       <button
@@ -24,8 +27,12 @@ export const Layout: React.FC<LayoutProps> = ({ currentView, onChangeView, child
         title={isCollapsed ? label : ''}
         className={`relative group flex items-center px-4 py-3.5 mb-2 rounded-2xl transition-all duration-300 ease-out ${
           isActive
-            ? 'bg-gradient-to-r from-indigo-500 to-violet-600 text-white shadow-lg shadow-indigo-200 transform scale-[1.02]'
-            : 'text-slate-500 hover:bg-white hover:shadow-md hover:text-indigo-600'
+            ? isAdmin 
+                ? 'bg-red-600 text-white shadow-lg shadow-red-200 transform scale-[1.02]' 
+                : 'bg-gradient-to-r from-violet-600 via-purple-600 to-fuchsia-600 text-white shadow-lg shadow-purple-200 transform scale-[1.02]'
+            : isAdmin 
+                ? 'text-red-500 hover:bg-red-50 hover:text-red-600'
+                : 'text-slate-500 hover:bg-white hover:shadow-md hover:text-violet-600'
         } ${isCollapsed ? 'justify-center w-14 mx-auto' : 'w-full'}`}
       >
         <Icon className={`w-5 h-5 transition-transform duration-300 ${isActive ? 'animate-pulse-slow' : 'group-hover:scale-110'} ${!isCollapsed ? 'mr-3' : ''}`} />
@@ -52,7 +59,7 @@ export const Layout: React.FC<LayoutProps> = ({ currentView, onChangeView, child
       <div className="lg:hidden fixed top-4 left-4 z-50">
         <button 
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          className="p-3 bg-white/80 backdrop-blur-md rounded-2xl shadow-lg border border-white/50 text-indigo-600"
+          className="p-3 bg-white/80 backdrop-blur-md rounded-2xl shadow-lg border border-white/50 text-violet-600"
         >
           <Menu className="w-6 h-6" />
         </button>
@@ -67,7 +74,7 @@ export const Layout: React.FC<LayoutProps> = ({ currentView, onChangeView, child
         {/* Collapse Toggle Button (Desktop Only) */}
         <button 
             onClick={() => setIsCollapsed(!isCollapsed)}
-            className="hidden lg:flex absolute -right-3 top-12 z-50 w-8 h-8 bg-white border border-slate-200 rounded-full shadow-md items-center justify-center text-indigo-600 hover:scale-110 hover:shadow-lg hover:border-indigo-300 transition-all"
+            className="hidden lg:flex absolute -right-3 top-12 z-50 w-8 h-8 bg-white border border-slate-200 rounded-full shadow-md items-center justify-center text-violet-600 hover:scale-110 hover:shadow-lg hover:border-violet-300 transition-all"
         >
             {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
         </button>
@@ -78,20 +85,28 @@ export const Layout: React.FC<LayoutProps> = ({ currentView, onChangeView, child
             {settings?.logo ? (
                 <img src={settings.logo} alt="Logo" className={`object-contain mb-3 rounded-2xl shadow-lg transition-all duration-500 ${isCollapsed ? 'h-10 w-10' : 'h-24 w-auto hover:rotate-3'}`} />
             ) : (
-                <div className={`bg-white rounded-[2rem] flex items-center justify-center mb-4 shadow-2xl shadow-indigo-200/50 animate-float border-4 border-white ring-4 ring-indigo-50 relative group cursor-default transition-all duration-300 ${isCollapsed ? 'w-12 h-12 rounded-xl' : 'w-20 h-20'}`}>
-                    <div className="absolute inset-0 bg-gradient-to-br from-indigo-50 to-purple-50 rounded-[1.8rem] opacity-50 group-hover:opacity-100 transition-opacity"></div>
-                    <Rocket className={`${isCollapsed ? 'w-6 h-6' : 'w-10 h-10'} text-indigo-600 relative z-10 transform group-hover:-translate-y-1 group-hover:translate-x-1 transition-transform duration-500`} strokeWidth={2.5} fill="#34d399" fillOpacity={0.2} />
+                <div className={`bg-white rounded-[2rem] flex items-center justify-center mb-4 shadow-2xl shadow-purple-200/50 animate-float border-4 border-white ring-4 ring-purple-50 relative group cursor-default transition-all duration-300 ${isCollapsed ? 'w-12 h-12 rounded-xl' : 'w-20 h-20'}`}>
+                    <div className="absolute inset-0 bg-gradient-to-br from-violet-50 to-fuchsia-50 rounded-[1.8rem] opacity-50 group-hover:opacity-100 transition-opacity"></div>
+                    <Rocket className={`${isCollapsed ? 'w-6 h-6' : 'w-10 h-10'} text-violet-600 relative z-10 transform group-hover:-translate-y-1 group-hover:translate-x-1 transition-transform duration-500`} strokeWidth={2.5} fill="#ec4899" fillOpacity={0.2} />
                 </div>
             )}
             
             {!isCollapsed && (
-                <h1 className="text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-pink-500 tracking-tight animate-fade-in text-center leading-tight">
-                    {settings.storeName || 'PosGo!'}
+                <h1 className="text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-violet-600 via-purple-600 to-fuchsia-600 tracking-tight animate-fade-in text-center leading-tight">
+                    {user?.storeName || settings.storeName || 'PosGo!'}
                 </h1>
             )}
             </div>
             
             <nav className="flex-1 overflow-y-auto overflow-x-hidden space-y-1 custom-scrollbar">
+            
+            {user?.role === 'admin' && (
+                <>
+                   <SectionTitle label="Super Admin" />
+                   <NavItem view={ViewState.ADMIN} icon={ShieldAlert} label="Panel Admin" isAdmin={true} />
+                </>
+            )}
+
             <SectionTitle label="Ventas" />
             <NavItem view={ViewState.POS} icon={ShoppingCart} label="Punto de Venta" />
             <NavItem view={ViewState.PURCHASES} icon={PackagePlus} label="Recepción" />
@@ -106,16 +121,18 @@ export const Layout: React.FC<LayoutProps> = ({ currentView, onChangeView, child
             </nav>
 
             <div className="mt-6 pt-6 border-t border-slate-200/60">
-                <div className={`bg-gradient-to-br from-emerald-50 to-teal-50 rounded-2xl border border-emerald-100 shadow-sm relative overflow-hidden group transition-all duration-300 ${isCollapsed ? 'p-2 flex justify-center' : 'p-4'}`}>
+                <div onClick={onLogout} className={`bg-gradient-to-br from-slate-50 to-white rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden group transition-all duration-300 cursor-pointer hover:border-red-200 ${isCollapsed ? 'p-2 flex justify-center' : 'p-4'}`}>
                     {!isCollapsed && (
-                        <div className="absolute top-0 right-0 w-16 h-16 bg-emerald-200/30 rounded-full blur-2xl -mr-4 -mt-4 transition-all group-hover:bg-emerald-300/40"></div>
+                        <div className="absolute top-0 right-0 w-16 h-16 bg-slate-100 rounded-full blur-2xl -mr-4 -mt-4 transition-all group-hover:bg-red-100"></div>
                     )}
                     <div className="flex items-center justify-center">
-                        <div className={`w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_12px_rgba(16,185,129,0.6)] ${!isCollapsed ? 'mr-3' : ''}`}></div>
+                        <div className={`w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 font-bold text-xs ${!isCollapsed ? 'mr-3' : ''}`}>
+                            {user?.role === 'admin' ? 'A' : user?.storeName?.charAt(0) || 'U'}
+                        </div>
                         {!isCollapsed && (
-                            <div>
-                                <span className="block text-xs font-bold text-emerald-800">Sistema Activo</span>
-                                <span className="block text-[10px] text-emerald-600 font-medium">v2.1.0 • Gaor</span>
+                            <div className="flex-1 min-w-0">
+                                <span className="block text-xs font-bold text-slate-700 truncate">{user?.phone || 'Usuario'}</span>
+                                <span className="block text-[10px] text-slate-500 font-medium truncate uppercase group-hover:text-red-500">Cerrar Sesión</span>
                             </div>
                         )}
                     </div>
