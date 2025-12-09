@@ -15,7 +15,7 @@ import {
   Printer, ArrowUpCircle, ArrowDownCircle, Wallet, ChevronLeft, LogOut, ArrowRightLeft,
   Upload, FileSpreadsheet, Filter, Calendar, CreditCard, PieChart as PieChartIcon,
   List, CalendarDays, CalendarRange, Store, LayoutGrid, Truck, MapPin, Image as ImageIcon, Zap, Banknote, Smartphone,
-  FileDown, FileUp, Eye, ArrowRight, Layers, Tag, Minus, Archive, ShoppingBasket, Flame, AlertCircle, RefreshCw
+  FileDown, FileUp, Eye, ArrowRight, Layers, Tag, Minus, Archive, ShoppingBasket, Flame, AlertCircle, RefreshCw, Clock
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, LineChart, Line 
@@ -512,7 +512,6 @@ const App: React.FC = () => {
 
   // --- Replenishment Logic ---
   const replenishmentData = useMemo(() => {
-      // 1. Calculate Sales Velocity (Rotation)
       const salesCounts: Record<string, number> = {};
       transactions.forEach(t => {
           t.items.forEach(item => {
@@ -520,14 +519,13 @@ const App: React.FC = () => {
           });
       });
 
-      // 2. Filter Low Stock & Sort by Rotation
       return products
-          .filter(p => p.stock <= 5) // Low stock threshold
+          .filter(p => p.stock <= 5) 
           .map(p => ({
               ...p,
               salesVelocity: salesCounts[p.id] || 0
           }))
-          .sort((a, b) => b.salesVelocity - a.salesVelocity); // High rotation first
+          .sort((a, b) => b.salesVelocity - a.salesVelocity);
   }, [products, transactions]);
 
 
@@ -545,7 +543,7 @@ const App: React.FC = () => {
       const newShift: CashShift = {
         id: Date.now().toString(),
         startTime: new Date().toISOString(),
-        startAmount: amountVal,
+        startAmount: amountVal || 0, // Allow 0
         status: 'OPEN',
         totalSalesCash: 0,
         totalSalesDigital: 0
@@ -559,7 +557,7 @@ const App: React.FC = () => {
         id: Date.now().toString(),
         shiftId: newShift.id,
         type: 'OPEN',
-        amount: amountVal,
+        amount: amountVal || 0,
         description: 'Apertura de Caja',
         timestamp: new Date().toISOString()
       };
@@ -642,7 +640,7 @@ const App: React.FC = () => {
         id: Date.now().toString(),
         shiftId: activeShift.id,
         type: cashAction,
-        amount: amountVal,
+        amount: amountVal || 0,
         description: cashDescription || (cashAction === 'IN' ? 'Ingreso' : 'Salida'),
         timestamp: new Date().toISOString()
       };
@@ -1686,12 +1684,13 @@ const App: React.FC = () => {
                      {/* Summary Cards */}
                      {activeShift && (
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                             {/* Efectivo Card */}
                              <div className="bg-emerald-50 p-6 rounded-[2rem] border border-emerald-100 relative overflow-hidden">
                                 <Banknote className="absolute right-[-10px] bottom-[-10px] w-24 h-24 text-emerald-200 opacity-50"/>
                                 <p className="text-xs font-bold text-emerald-600 uppercase mb-1">Efectivo en Caja (Teórico)</p>
                                 <h3 className="text-4xl font-black text-emerald-800 tracking-tight">
                                     {settings.currency}{(
-                                        activeShift.startAmount + 
+                                        (activeShift?.startAmount || 0) + 
                                         movements.filter(m => m.shiftId === activeShift.id && m.type === 'IN').reduce((s, m) => s + m.amount, 0) -
                                         movements.filter(m => m.shiftId === activeShift.id && m.type === 'OUT').reduce((s, m) => s + m.amount, 0) +
                                         transactions.filter(t => t.shiftId === activeShift.id).reduce((sum, t) => {
@@ -1702,6 +1701,7 @@ const App: React.FC = () => {
                                 </h3>
                              </div>
 
+                             {/* Digital Card */}
                              <div className="bg-purple-50 p-6 rounded-[2rem] border border-purple-100 relative overflow-hidden">
                                 <Smartphone className="absolute right-[-10px] bottom-[-10px] w-24 h-24 text-purple-200 opacity-50"/>
                                 <p className="text-xs font-bold text-purple-600 uppercase mb-1">Ventas Digitales (Yape/Plin/Tarj)</p>
@@ -1713,10 +1713,14 @@ const App: React.FC = () => {
                                 </h3>
                              </div>
 
-                             <div className="bg-white p-6 rounded-[2rem] border border-slate-200 flex flex-col justify-center items-center text-center">
-                                 <p className="text-xs font-bold text-slate-400 uppercase">Inicio de Caja</p>
-                                 <p className="text-2xl font-black text-slate-700">{settings.currency}{activeShift.startAmount.toFixed(2)}</p>
-                                 <p className="text-xs text-slate-400 mt-1">{new Date(activeShift.startTime).toLocaleTimeString()}</p>
+                             {/* Start Info Card */}
+                             <div className="bg-white p-6 rounded-[2rem] border border-slate-200 flex flex-col justify-center items-center text-center shadow-sm">
+                                 <p className="text-xs font-bold text-slate-400 uppercase mb-1">Inicio de Caja</p>
+                                 <p className="text-2xl font-black text-slate-700">{settings.currency}{(activeShift?.startAmount || 0).toFixed(2)}</p>
+                                 <p className="text-xs text-slate-400 mt-1 flex items-center gap-1">
+                                     <Clock className="w-3 h-3"/>
+                                     {activeShift?.startTime ? new Date(activeShift.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--:--'}
+                                 </p>
                              </div>
                         </div>
                      )}
@@ -1737,10 +1741,10 @@ const App: React.FC = () => {
                      {/* Form */}
                      <div className="bg-white border border-slate-200 rounded-3xl p-8 shadow-sm mb-8">
                          <h3 className="font-black text-xl text-slate-800 mb-6 flex items-center gap-2">
-                             {cashAction === 'OPEN' && <span className="text-emerald-600">🚀 Iniciar Turno</span>}
-                             {cashAction === 'IN' && <span className="text-emerald-600">💰 Registrar Ingreso Extra</span>}
-                             {cashAction === 'OUT' && <span className="text-red-600">💸 Registrar Gasto / Retiro</span>}
-                             {cashAction === 'CLOSE' && <span className="text-slate-800">🔒 Cerrar Caja</span>}
+                             {cashAction === 'OPEN' && <><Rocket className="w-6 h-6 text-emerald-600"/> <span className="text-emerald-600">Iniciar Turno</span></>}
+                             {cashAction === 'IN' && <><DollarSign className="w-6 h-6 text-emerald-600"/> <span className="text-emerald-600">Registrar Ingreso Extra</span></>}
+                             {cashAction === 'OUT' && <><ArrowUpCircle className="w-6 h-6 text-red-600"/> <span className="text-red-600">Registrar Gasto / Retiro</span></>}
+                             {cashAction === 'CLOSE' && <><Lock className="w-6 h-6 text-slate-800"/> <span className="text-slate-800">Cerrar Caja</span></>}
                          </h3>
 
                          <div className="flex gap-4 items-end">
@@ -1752,7 +1756,7 @@ const App: React.FC = () => {
                                         type="number" 
                                         value={cashAmount}
                                         onChange={(e) => setCashAmount(e.target.value)}
-                                        className="w-full pl-10 pr-4 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-violet-500 outline-none font-bold text-2xl text-slate-800 transition-colors"
+                                        className="w-full pl-10 pr-4 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-slate-800 outline-none font-bold text-2xl text-slate-800 transition-colors"
                                         placeholder="0.00"
                                         autoFocus
                                      />
@@ -1765,16 +1769,14 @@ const App: React.FC = () => {
                                         type="text" 
                                         value={cashDescription}
                                         onChange={(e) => setCashDescription(e.target.value)}
-                                        className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-violet-500 outline-none font-bold text-lg text-slate-800 transition-colors"
+                                        className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-slate-800 outline-none font-bold text-lg text-slate-800 transition-colors"
                                         placeholder={cashAction === 'CLOSE' ? 'Observaciones de cierre...' : 'Ej. Pago proveedores'}
                                      />
                                  </div>
                              )}
                              <button 
                                 onClick={handleCashAction}
-                                className={`px-8 py-4 rounded-2xl font-bold text-white shadow-lg transition-transform hover:scale-105 active:scale-95 ${
-                                    cashAction === 'OUT' ? 'bg-red-500 hover:bg-red-600 shadow-red-200' : 'bg-slate-900 hover:bg-black shadow-slate-300'
-                                }`}
+                                className={`px-8 py-4 rounded-2xl font-bold text-white shadow-lg transition-transform hover:scale-105 active:scale-95 bg-slate-900 hover:bg-black shadow-slate-300`}
                              >
                                  CONFIRMAR
                              </button>
