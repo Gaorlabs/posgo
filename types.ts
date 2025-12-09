@@ -1,14 +1,4 @@
 
-
-export interface ProductVariant {
-  id: string;
-  name: string; // e.g. "Rojo - S" or "Grande"
-  price: number;
-  stock: number;
-  barcode?: string;
-  cost?: number;
-}
-
 export interface Product {
   id: string;
   name: string;
@@ -18,18 +8,11 @@ export interface Product {
   barcode?: string;
   description?: string;
   cost?: number; // Cost price for profit calculation
-  image?: string;
-  // Variants Support
-  hasVariants?: boolean;
-  variants?: ProductVariant[];
 }
 
 export interface CartItem extends Product {
   quantity: number;
   discount?: number; // Amount to subtract per unit
-  // Variant specifics in Cart
-  selectedVariantId?: string;
-  selectedVariantName?: string;
 }
 
 export type PaymentMethod = 'cash' | 'card' | 'yape' | 'plin';
@@ -97,8 +80,7 @@ export enum ViewState {
   PURCHASES = 'PURCHASES',
   SALES = 'SALES',
   CUSTOMERS = 'CUSTOMERS',
-  SETTINGS = 'SETTINGS',
-  ADMIN = 'ADMIN' // New View for Super Admin
+  SETTINGS = 'SETTINGS'
 }
 
 export interface StoreSettings {
@@ -141,20 +123,4 @@ export interface CashShift {
   status: 'OPEN' | 'CLOSED';
   totalSalesCash: number;
   totalSalesDigital: number;
-}
-
-// --- SaaS / Auth Types ---
-
-export type UserRole = 'owner' | 'employee' | 'admin';
-export type PlanType = 'free' | 'pro' | 'enterprise';
-
-export interface UserProfile {
-  id: string;
-  phone: string;
-  storeName: string;
-  role: UserRole;
-  plan: PlanType;
-  planExpiryDate: string; // ISO Date
-  isBlocked: boolean;
-  onboarded: boolean;
 }
