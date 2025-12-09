@@ -28,7 +28,10 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
   const handleSendCode = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (phone.length < 9) return alert('Número inválido');
+    // Strip spaces for length check
+    const cleanPhone = phone.replace(/\s/g, '');
+    if (cleanPhone.length < 9) return alert('Número inválido');
+    
     setIsLoading(true);
     setTimeout(() => {
       setIsLoading(false);
@@ -100,9 +103,13 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   };
 
   const startDemo = () => {
-      setPhone('900 100 100');
-      handleSendCode();
-      // Auto fill OTP logic simulation would happen in the next step or by user manually
+      // Fix: Directly set phone and trigger next step to avoid state update race condition
+      setPhone('900100100'); 
+      setIsLoading(true);
+      setTimeout(() => {
+          setIsLoading(false);
+          setStep('OTP');
+      }, 1500);
   };
 
   return (
