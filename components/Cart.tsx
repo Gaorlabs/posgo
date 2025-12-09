@@ -1,14 +1,12 @@
-
-
 import React, { useState, useEffect } from 'react';
 import { CartItem, StoreSettings, PaymentMethod, PaymentDetail } from '../types';
-import { Trash2, Plus, Minus, CreditCard, Banknote, ShoppingCart, Smartphone, X, Check, ArrowRight, Layers } from 'lucide-react';
+import { Trash2, Plus, Minus, CreditCard, Banknote, ShoppingCart, Smartphone, X, Check, ArrowRight } from 'lucide-react';
 
 interface CartProps {
   items: CartItem[];
-  onUpdateQuantity: (id: string, delta: number, variantId?: string) => void;
-  onRemoveItem: (id: string, variantId?: string) => void;
-  onUpdateDiscount?: (id: string, discount: number, variantId?: string) => void;
+  onUpdateQuantity: (id: string, delta: number) => void;
+  onRemoveItem: (id: string) => void;
+  onUpdateDiscount?: (id: string, discount: number) => void;
   onCheckout: (method: PaymentMethod, payments: PaymentDetail[]) => void;
   onClearCart: () => void;
   settings: StoreSettings;
@@ -25,7 +23,7 @@ export const Cart: React.FC<CartProps> = ({
   settings 
 }) => {
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
-  const [selectedItemKey, setSelectedItemKey] = useState<string | null>(null);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
 
   // Multi-payment state
   const [payments, setPayments] = useState<PaymentDetail[]>([]);
@@ -97,14 +95,12 @@ export const Cart: React.FC<CartProps> = ({
     setPaymentModalOpen(false);
   };
 
-  const getItemKey = (item: CartItem) => item.selectedVariantId ? `${item.id}-${item.selectedVariantId}` : item.id;
-
   return (
-    <div className="flex flex-col h-full bg-white/80 backdrop-blur-xl border-l border-white/50 shadow-2xl rounded-l-3xl overflow-hidden" onClick={() => setSelectedItemKey(null)}>
+    <div className="flex flex-col h-full bg-white/80 backdrop-blur-xl border-l border-white/50 shadow-2xl rounded-l-3xl overflow-hidden" onClick={() => setSelectedItemId(null)}>
       {/* Header */}
       <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white/50">
         <div className="flex items-center gap-3">
-            <div className="p-2 bg-violet-100 text-violet-600 rounded-xl">
+            <div className="p-2 bg-indigo-100 text-indigo-600 rounded-xl">
                 <ShoppingCart className="w-5 h-5" />
             </div>
             <h2 className="font-extrabold text-xl text-slate-800 tracking-tight">Orden Actual</h2>
@@ -128,76 +124,68 @@ export const Cart: React.FC<CartProps> = ({
             <p className="text-sm">Agrega productos para comenzar</p>
           </div>
         ) : (
-          items.map((item, idx) => {
-            const itemKey = getItemKey(item);
-            return (
-                <div 
-                key={itemKey} 
-                onClick={(e) => { e.stopPropagation(); setSelectedItemKey(itemKey); }}
-                className={`relative flex items-center justify-between p-4 rounded-2xl shadow-sm cursor-pointer transition-all duration-200 border-2 animate-fade-in-up ${
-                    selectedItemKey === itemKey 
-                    ? 'bg-violet-50/50 border-violet-500 shadow-violet-100 shadow-md transform scale-[1.02]' 
-                    : 'bg-white border-transparent hover:border-slate-100 hover:shadow-md'
-                }`}
-                style={{ animationDelay: `${idx * 50}ms` }}
+          items.map((item, idx) => (
+            <div 
+              key={item.id} 
+              onClick={(e) => { e.stopPropagation(); setSelectedItemId(item.id); }}
+              className={`relative flex items-center justify-between p-4 rounded-2xl shadow-sm cursor-pointer transition-all duration-200 border-2 animate-fade-in-up ${
+                selectedItemId === item.id 
+                  ? 'bg-indigo-50/50 border-indigo-500 shadow-indigo-100 shadow-md transform scale-[1.02]' 
+                  : 'bg-white border-transparent hover:border-slate-100 hover:shadow-md'
+              }`}
+              style={{ animationDelay: `${idx * 50}ms` }}
+            >
+              <div className="flex-1">
+                <h4 className={`font-bold text-sm leading-tight mb-1 ${selectedItemId === item.id ? 'text-indigo-700' : 'text-slate-800'}`}>{item.name}</h4>
+                <div className="flex items-center gap-2">
+                    <p className="text-sm text-indigo-600 font-black">
+                    {settings.currency}{item.price.toFixed(2)}
+                    </p>
+                    {item.discount && item.discount > 0 && (
+                        <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold">-{settings.currency}{item.discount.toFixed(2)}</span>
+                    )}
+                </div>
+                {/* Discount Input when selected */}
+                {selectedItemId === item.id && onUpdateDiscount && (
+                    <div className="mt-3 flex items-center gap-2 animate-fade-in-up" onClick={e => e.stopPropagation()}>
+                        <span className="text-[10px] uppercase font-bold text-slate-400">Descuento</span>
+                        <input 
+                            type="number"
+                            min="0"
+                            step="0.10"
+                            className="w-20 p-1 text-sm border border-indigo-200 rounded-lg focus:border-indigo-500 outline-none text-center font-bold text-indigo-600 bg-white"
+                            placeholder="0.00"
+                            value={item.discount || ''}
+                            onChange={(e) => onUpdateDiscount(item.id, parseFloat(e.target.value) || 0)}
+                        />
+                    </div>
+                )}
+              </div>
+              <div className="flex items-center space-x-3">
+                <div className={`flex items-center rounded-xl bg-slate-50 p-1 ${selectedItemId === item.id ? 'ring-2 ring-indigo-200' : ''}`}>
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); onUpdateQuantity(item.id, -1); }}
+                    className="w-8 h-8 flex items-center justify-center bg-white rounded-lg shadow-sm text-slate-600 hover:bg-red-50 hover:text-red-500 transition-colors active:scale-90"
+                  >
+                    <Minus className="w-3 h-3" />
+                  </button>
+                  <span className="w-8 text-center text-sm font-bold text-slate-700">{item.quantity}</span>
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); onUpdateQuantity(item.id, 1); }}
+                    className="w-8 h-8 flex items-center justify-center bg-white rounded-lg shadow-sm text-slate-600 hover:bg-green-50 hover:text-green-500 transition-colors active:scale-90"
+                  >
+                    <Plus className="w-3 h-3" />
+                  </button>
+                </div>
+                <button 
+                  onClick={(e) => { e.stopPropagation(); onRemoveItem(item.id); }}
+                  className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${selectedItemId === item.id ? 'bg-red-100 text-red-500' : 'text-slate-300 hover:text-red-500 hover:bg-red-50'}`}
                 >
-                <div className="flex-1">
-                    <h4 className={`font-bold text-sm leading-tight mb-1 ${selectedItemKey === itemKey ? 'text-violet-700' : 'text-slate-800'}`}>{item.name}</h4>
-                    {item.selectedVariantName && (
-                        <div className="flex items-center gap-1 text-[10px] text-slate-500 font-bold uppercase mb-1 bg-slate-100 w-fit px-1.5 py-0.5 rounded">
-                             <Layers className="w-3 h-3"/> {item.selectedVariantName}
-                        </div>
-                    )}
-                    <div className="flex items-center gap-2">
-                        <p className="text-sm text-violet-600 font-black">
-                        {settings.currency}{item.price.toFixed(2)}
-                        </p>
-                        {item.discount && item.discount > 0 && (
-                            <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold">-{settings.currency}{item.discount.toFixed(2)}</span>
-                        )}
-                    </div>
-                    {/* Discount Input when selected */}
-                    {selectedItemKey === itemKey && onUpdateDiscount && (
-                        <div className="mt-3 flex items-center gap-2 animate-fade-in-up" onClick={e => e.stopPropagation()}>
-                            <span className="text-[10px] uppercase font-bold text-slate-400">Descuento</span>
-                            <input 
-                                type="number"
-                                min="0"
-                                step="0.10"
-                                className="w-20 p-1 text-sm border border-violet-200 rounded-lg focus:border-violet-500 outline-none text-center font-bold text-violet-600 bg-white"
-                                placeholder="0.00"
-                                value={item.discount || ''}
-                                onChange={(e) => onUpdateDiscount(item.id, parseFloat(e.target.value) || 0, item.selectedVariantId)}
-                            />
-                        </div>
-                    )}
-                </div>
-                <div className="flex items-center space-x-3">
-                    <div className={`flex items-center rounded-xl bg-slate-50 p-1 ${selectedItemKey === itemKey ? 'ring-2 ring-violet-200' : ''}`}>
-                    <button 
-                        onClick={(e) => { e.stopPropagation(); onUpdateQuantity(item.id, -1, item.selectedVariantId); }}
-                        className="w-8 h-8 flex items-center justify-center bg-white rounded-lg shadow-sm text-slate-600 hover:bg-red-50 hover:text-red-500 transition-colors active:scale-90"
-                    >
-                        <Minus className="w-3 h-3" />
-                    </button>
-                    <span className="w-8 text-center text-sm font-bold text-slate-700">{item.quantity}</span>
-                    <button 
-                        onClick={(e) => { e.stopPropagation(); onUpdateQuantity(item.id, 1, item.selectedVariantId); }}
-                        className="w-8 h-8 flex items-center justify-center bg-white rounded-lg shadow-sm text-slate-600 hover:bg-emerald-50 hover:text-emerald-500 transition-colors active:scale-90"
-                    >
-                        <Plus className="w-3 h-3" />
-                    </button>
-                    </div>
-                    <button 
-                    onClick={(e) => { e.stopPropagation(); onRemoveItem(item.id, item.selectedVariantId); }}
-                    className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${selectedItemKey === itemKey ? 'bg-red-100 text-red-500' : 'text-slate-300 hover:text-red-500 hover:bg-red-50'}`}
-                    >
-                    <Trash2 className="w-4 h-4" />
-                    </button>
-                </div>
-                </div>
-            )
-          })
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          ))
         )}
       </div>
 
@@ -220,7 +208,7 @@ export const Cart: React.FC<CartProps> = ({
           </div>
           <div className="flex justify-between items-end pt-2">
             <span className="text-slate-800 font-bold text-lg">Total a Pagar</span>
-            <span className="text-3xl font-black bg-clip-text text-transparent bg-gradient-to-r from-violet-600 to-fuchsia-600">
+            <span className="text-3xl font-black bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600">
                 {settings.currency}{total.toFixed(2)}
             </span>
           </div>
@@ -229,7 +217,7 @@ export const Cart: React.FC<CartProps> = ({
         <button
           disabled={items.length === 0}
           onClick={(e) => { e.stopPropagation(); setPaymentModalOpen(true); }}
-          className="group w-full py-4 bg-gradient-to-r from-violet-600 via-purple-600 to-fuchsia-600 text-white rounded-2xl font-bold text-lg shadow-lg shadow-purple-200 hover:shadow-xl hover:shadow-purple-300 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none transition-all flex items-center justify-center gap-2"
+          className="group w-full py-4 bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-2xl font-bold text-lg shadow-lg shadow-indigo-200 hover:shadow-xl hover:shadow-indigo-300 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none transition-all flex items-center justify-center gap-2"
         >
           <span>Cobrar</span>
           <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform"/>
@@ -249,7 +237,7 @@ export const Cart: React.FC<CartProps> = ({
               
               {/* Total Display */}
               <div className="text-center mb-8 relative">
-                 <div className="absolute inset-0 bg-gradient-to-r from-violet-500/10 to-fuchsia-500/10 blur-xl rounded-full transform scale-75"></div>
+                 <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/10 to-purple-500/10 blur-xl rounded-full transform scale-75"></div>
                  <span className="relative text-sm text-slate-500 font-bold uppercase tracking-wide">Total a Pagar</span>
                  <div className="relative text-5xl font-black text-slate-800 tracking-tight mt-1">{settings.currency}{total.toFixed(2)}</div>
               </div>
@@ -284,8 +272,8 @@ export const Cart: React.FC<CartProps> = ({
                 <div className="space-y-5">
                    <div className="grid grid-cols-4 gap-3">
                       {[
-                        { id: 'cash', icon: Banknote, label: 'Efectivo', color: 'emerald' },
-                        { id: 'yape', icon: Smartphone, label: 'Yape', color: 'violet' },
+                        { id: 'cash', icon: Banknote, label: 'Efectivo', color: 'green' },
+                        { id: 'yape', icon: Smartphone, label: 'Yape', color: 'purple' },
                         { id: 'plin', icon: Smartphone, label: 'Plin', color: 'cyan' },
                         { id: 'card', icon: CreditCard, label: 'Tarjeta', color: 'blue' }
                       ].map((m) => (
@@ -311,7 +299,7 @@ export const Cart: React.FC<CartProps> = ({
                           type="number"
                           value={currentAmount}
                           onChange={(e) => setCurrentAmount(e.target.value)}
-                          className="w-full pl-10 pr-4 py-4 border-2 border-slate-200 rounded-2xl focus:border-violet-500 focus:ring-4 focus:ring-violet-100 outline-none font-bold text-2xl h-full text-slate-800 transition-all"
+                          className="w-full pl-10 pr-4 py-4 border-2 border-slate-200 rounded-2xl focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 outline-none font-bold text-2xl h-full text-slate-800 transition-all"
                           placeholder="0.00"
                           autoFocus
                           onKeyDown={(e) => { if(e.key === 'Enter') handleAddPayment(); }}
@@ -331,12 +319,12 @@ export const Cart: React.FC<CartProps> = ({
                    </p>
                 </div>
               ) : (
-                 <div className="bg-emerald-50 border-2 border-emerald-100 p-6 rounded-3xl text-center animate-bounce-slight mb-4">
-                    <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                        <Check className="w-8 h-8 text-emerald-600"/>
+                 <div className="bg-green-50 border-2 border-green-100 p-6 rounded-3xl text-center animate-bounce-slight mb-4">
+                    <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                        <Check className="w-8 h-8 text-green-600"/>
                     </div>
-                    <p className="text-emerald-800 font-black text-xl mb-1">¡Total Cubierto!</p>
-                    {change > 0 && <p className="text-emerald-700 font-medium">Vuelto para el cliente: <span className="text-2xl font-bold block mt-1">{settings.currency}{change.toFixed(2)}</span></p>}
+                    <p className="text-green-800 font-black text-xl mb-1">¡Total Cubierto!</p>
+                    {change > 0 && <p className="text-green-700 font-medium">Vuelto para el cliente: <span className="text-2xl font-bold block mt-1">{settings.currency}{change.toFixed(2)}</span></p>}
                  </div>
               )}
 
@@ -352,7 +340,7 @@ export const Cart: React.FC<CartProps> = ({
               <button 
                 onClick={handleFinalize}
                 disabled={remaining > 0.01}
-                className="flex-1 py-3.5 px-4 bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white rounded-xl font-bold hover:shadow-lg hover:shadow-purple-200 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none transition-all flex items-center justify-center gap-2"
+                className="flex-1 py-3.5 px-4 bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-xl font-bold hover:shadow-lg hover:shadow-indigo-200 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none transition-all flex items-center justify-center gap-2"
               >
                 <Check className="w-5 h-5"/> Confirmar Venta
               </button>
