@@ -1,359 +1,324 @@
-
-import React, { useState } from 'react';
-import { Rocket, ArrowRight, Loader2, Lock, TrendingUp, Package, CheckCircle2, Sparkles, PlayCircle, Smartphone } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { 
+  Rocket, ArrowRight, Smartphone, Lock, CheckCircle, 
+  Store, Zap, ShieldCheck, Play, Loader2
+} from 'lucide-react';
 import { UserProfile } from '../types';
-import { supabase } from '../lib/supabaseClient';
 
 interface AuthProps {
   onLogin: (user: UserProfile) => void;
 }
 
 export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
+  // --- Estados de la Máquina ---
   const [step, setStep] = useState<'PHONE' | 'OTP' | 'ADMIN_LOGIN'>('PHONE');
   const [authTab, setAuthTab] = useState<'LOGIN' | 'DEMO'>('LOGIN');
+  
+  // --- Datos del Formulario ---
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
   const [adminPass, setAdminPass] = useState('');
+  
+  // --- UI & Secretos ---
   const [isLoading, setIsLoading] = useState(false);
   const [logoClicks, setLogoClicks] = useState(0);
 
+  // --- LÓGICA DEL BACKDOOR (MODO DIOS) ---
   const handleLogoClick = () => {
     const newCount = logoClicks + 1;
     setLogoClicks(newCount);
-    if (newCount >= 4) {
+    if (newCount === 4) {
+      // ¡Bingo! Se abre la puerta trasera
       setStep('ADMIN_LOGIN');
       setLogoClicks(0);
     }
   };
 
+  // --- LÓGICA DE USUARIO REGULAR (WhatsApp Style) ---
   const handleSendCode = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    // Strip spaces for length check
-    const cleanPhone = phone.replace(/\s/g, '');
-    if (cleanPhone.length < 9) return alert('Número inválido');
+    if (!phone) return;
     
     setIsLoading(true);
+    // Simulamos llamada a API de envío de SMS
     setTimeout(() => {
       setIsLoading(false);
       setStep('OTP');
     }, 1500);
   };
 
-  const handleVerifyOtp = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
+  const handleVerifyOtp = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!otp) return;
+
     setIsLoading(true);
-
-    // TEST USER LOGIC
-    if (phone.replace(/\s/g, '') === '900100100') {
-        setTimeout(() => {
-            const testUser: UserProfile = {
-                id: 'test-user-demo',
-                phone: '900 100 100',
-                storeName: 'Mi Tienda Demo 🚀',
-                role: 'owner',
-                plan: 'pro',
-                planExpiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-                isBlocked: false,
-                onboarded: true
-            };
-            onLogin(testUser);
-            setIsLoading(false);
-        }, 1000);
-        return;
-    }
-
-    // Normal User Logic (Mock for now, ready for Supabase Auth integration)
     setTimeout(() => {
-      const mockUser: UserProfile = {
-        id: 'user-' + Date.now(),
-        phone: phone,
-        storeName: 'Mi Negocio',
-        role: 'owner',
-        plan: 'pro',
-        planExpiryDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-        isBlocked: false,
-        onboarded: true
+      // Simulamos validación exitosa
+      // En un SaaS real, aquí Supabase devuelve el usuario
+      const isDemoUser = phone.replace(/\s/g, '') === '900100100';
+      
+      const userProfile: UserProfile = {
+        id: isDemoUser ? 'test-user-demo' : `user-${Date.now()}`,
+        name: isDemoUser ? 'Mi Tienda Demo' : 'Usuario Nuevo',
+        role: 'owner', // Por defecto todos son dueños de su tienda
+        storeId: `store-${Date.now()}`
       };
-      onLogin(mockUser);
-      setIsLoading(false);
+      
+      onLogin(userProfile);
     }, 1500);
   };
 
+  // --- LÓGICA DE SUPER ADMIN ---
   const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (adminPass !== 'Luis2021') { 
-      alert('Contraseña incorrecta');
-      return;
+    if (adminPass === 'Luis2021') {
+        // Credenciales Maestras Correctas
+        setIsLoading(true);
+        setTimeout(() => {
+            onLogin({
+                id: 'super-admin',
+                name: 'Super Admin',
+                role: 'admin', // Esto activa la vista ViewState.ADMIN en App.tsx
+                storeId: 'global'
+            });
+        }, 1000);
+    } else {
+        alert("Acceso Denegado: Credenciales incorrectas.");
+        setAdminPass('');
     }
-    setIsLoading(true);
-    setTimeout(() => {
-      const adminUser: UserProfile = {
-        id: 'admin-001',
-        phone: '000000000',
-        storeName: 'PosGo! Admin',
-        role: 'admin',
-        plan: 'enterprise',
-        planExpiryDate: new Date(Date.now() + 3650 * 24 * 60 * 60 * 1000).toISOString(),
-        isBlocked: false,
-        onboarded: true
-      };
-      onLogin(adminUser);
-      setIsLoading(false);
-    }, 1000);
   };
 
+  // --- LÓGICA MÁGICA DEL MODO DEMO ---
   const startDemo = () => {
-      // Fix: Directly set phone and trigger next step to avoid state update race condition
-      setPhone('900100100'); 
+      setAuthTab('DEMO'); // Aseguramos visualmente el tab
+      setPhone('900 100 100');
       setIsLoading(true);
+      
+      // Automatizamos el flujo para que el usuario no tenga que hacer nada
       setTimeout(() => {
           setIsLoading(false);
           setStep('OTP');
+          // Auto-llenar OTP visualmente para efecto "wow"
+          setTimeout(() => setOtp('123456'), 500);
       }, 1500);
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#f8fafc] font-sans relative overflow-hidden">
-      
-      {/* Background with Fallback */}
-      <div className="absolute inset-0 bg-gradient-to-br from-indigo-50 to-slate-100 z-0"></div>
-      <img 
-        src="https://images.unsplash.com/photo-1604594849809-dfedbc82710f?q=80&w=2670&auto=format&fit=crop" 
-        alt="Mercado Peruano" 
-        className="absolute inset-0 w-full h-full object-cover opacity-20 mix-blend-overlay z-0 filter blur-[1px]"
-        onError={(e) => {
-            e.currentTarget.style.display = 'none';
-        }}
-      />
-      
-      {/* Background Blobs */}
-      <div className="absolute top-[-10%] right-[-5%] w-[500px] h-[500px] bg-violet-200/40 rounded-full mix-blend-multiply filter blur-3xl opacity-70 animate-float"></div>
-      <div className="absolute bottom-[-10%] left-[-10%] w-[600px] h-[600px] bg-emerald-200/40 rounded-full mix-blend-multiply filter blur-3xl opacity-70 animate-float" style={{animationDelay: '2s'}}></div>
-      <div className="absolute top-[20%] left-[20%] w-[300px] h-[300px] bg-pink-200/40 rounded-full mix-blend-multiply filter blur-3xl opacity-50 animate-float" style={{animationDelay: '4s'}}></div>
-
-      {/* Main Container */}
-      <div className="w-full max-w-5xl bg-white/60 backdrop-blur-xl rounded-[3rem] shadow-2xl border border-white/50 flex overflow-hidden relative z-10 mx-4 lg:mx-0 min-h-[600px]">
+    <div className="min-h-screen w-full flex bg-[#f8fafc] font-sans overflow-hidden relative">
         
-        {/* Left Side: Branding */}
-        <div className="hidden lg:flex w-1/2 bg-white/40 p-12 flex-col justify-between relative border-r border-white/50">
-           <div className="relative z-10">
-              <div 
-                className="flex items-center gap-3 mb-8 cursor-pointer select-none group"
-                onClick={handleLogoClick}
-                title="PosGo! System"
-              >
-                  <div className="bg-gradient-to-tr from-violet-600 to-fuchsia-600 p-3 rounded-2xl shadow-lg shadow-violet-200 animate-bounce-slight group-active:scale-95 transition-transform">
-                    <Rocket className="w-8 h-8 text-white" />
-                  </div>
-                  <span className="font-black text-2xl text-slate-800 tracking-tight">PosGo!</span>
-              </div>
-              
-              <h1 className="text-5xl font-black text-slate-800 leading-tight mb-6 animate-fade-in-up">
-                Acelera tus <span className="text-violet-600">Ventas</span>,<br/>
-                controla tu <span className="text-pink-500">Stock</span><br/>
-                y crece <span className="text-emerald-500">Sin Límites.</span>
-              </h1>
-              
-              <p className="text-slate-600 text-lg font-medium max-w-md leading-relaxed animate-fade-in-up" style={{animationDelay: '200ms'}}>
-                Olvídate del cuaderno y el desorden. Únete a los emprendedores que ya digitalizaron su negocio con alegría. 🚀
-              </p>
-           </div>
-
-           {/* Floating Icons */}
-           <div className="absolute right-10 top-20 w-16 h-16 bg-white rounded-2xl shadow-lg flex items-center justify-center text-emerald-500 animate-bounce-slight border border-slate-100 z-0 opacity-80">
-              <TrendingUp className="w-8 h-8"/>
-           </div>
-           <div className="absolute right-20 bottom-40 w-20 h-20 bg-white rounded-2xl shadow-lg flex items-center justify-center text-violet-500 animate-float border border-slate-100 opacity-80">
-               <Package className="w-10 h-10"/>
-           </div>
-           
-           <div className="relative z-10 flex flex-wrap gap-4 mt-8 animate-fade-in-up" style={{animationDelay: '400ms'}}>
-               <div className="px-5 py-3 bg-white/80 backdrop-blur-md shadow-sm border border-emerald-100 rounded-full text-emerald-700 text-sm font-bold flex items-center gap-2 transform hover:scale-105 transition-transform">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-500"/> Fácil de Usar
-               </div>
-               <div className="px-5 py-3 bg-white/80 backdrop-blur-md shadow-sm border border-violet-100 rounded-full text-violet-700 text-sm font-bold flex items-center gap-2 transform hover:scale-105 transition-transform">
-                  <CheckCircle2 className="w-5 h-5 text-violet-500"/> Todo en la Nube
-               </div>
-           </div>
+        {/* --- FONDO ANIMADO --- */}
+        <div className="absolute inset-0 z-0">
+            {/* Imagen de fondo de alta calidad: Mercado Latino / Emprendedores */}
+            <img 
+                src="https://images.unsplash.com/photo-1556740758-90de2929e759?q=80&w=2070&auto=format&fit=crop" 
+                alt="Emprendedores" 
+                className="w-full h-full object-cover opacity-10"
+            />
+            {/* Blobs Animados (Manchas de color flotantes) */}
+            <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-400/30 rounded-full blur-[100px] animate-float"></div>
+            <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-pink-400/30 rounded-full blur-[100px] animate-float" style={{animationDelay: '2s'}}></div>
         </div>
 
-        {/* Right Side: Login Form */}
-        <div className="w-full lg:w-1/2 p-8 lg:p-16 flex flex-col justify-center bg-white/80 backdrop-blur-xl transition-all">
-           <div className="max-w-md mx-auto w-full">
-              
-              {/* Mobile Header */}
-              <div className="lg:hidden mb-8 text-center">
-                  <div onClick={handleLogoClick} className="inline-block bg-gradient-to-tr from-violet-600 to-fuchsia-600 p-4 rounded-2xl shadow-lg mb-4 cursor-pointer active:scale-95 transition-transform">
-                    <Rocket className="w-8 h-8 text-white" />
-                  </div>
-                  <h2 className="text-3xl font-black text-slate-800">PosGo!</h2>
-              </div>
-
-              {step === 'PHONE' && (
-                <div className="animate-fade-in-up">
-                    {/* TABS */}
-                    <div className="flex p-1 bg-slate-100/80 rounded-2xl mb-8 relative">
-                        <button 
-                            onClick={() => setAuthTab('LOGIN')}
-                            className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all duration-300 relative z-10 ${authTab === 'LOGIN' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-                        >
-                            Ingresar
-                        </button>
-                        <button 
-                            onClick={() => setAuthTab('DEMO')}
-                            className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all duration-300 relative z-10 ${authTab === 'DEMO' ? 'bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
-                        >
-                            <span className="flex items-center justify-center gap-2">
-                                <Sparkles className="w-4 h-4" /> Modo Demo
-                            </span>
-                        </button>
+        {/* --- CONTENEDOR PRINCIPAL (SPLIT SCREEN) --- */}
+        <div className="w-full max-w-[1600px] mx-auto grid grid-cols-1 lg:grid-cols-2 z-10 h-screen p-6 lg:p-12 gap-12">
+            
+            {/* IZQUIERDA: BRANDING & INSPIRACIÓN (Solo Desktop) */}
+            <div className="hidden lg:flex flex-col justify-center relative">
+                <div className="relative z-10 space-y-8 p-8">
+                    <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/60 backdrop-blur-md rounded-full border border-white/50 shadow-sm animate-fade-in-up">
+                        <span className="relative flex h-3 w-3">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                        </span>
+                        <span className="text-sm font-bold text-slate-700">El Sistema #1 para PYMES</span>
                     </div>
 
-                    {authTab === 'LOGIN' ? (
-                        <div className="animate-fade-in">
-                            <h2 className="text-3xl font-black text-slate-800 mb-2 hidden lg:block">¡Hola de nuevo! 👋</h2>
-                            <p className="text-slate-500 mb-6 font-medium">Ingresa tu celular para acceder a tu negocio.</p>
+                    <h1 className="text-7xl font-black text-slate-800 leading-tight tracking-tight animate-fade-in-up" style={{animationDelay: '100ms'}}>
+                        Acelera tus <br/>
+                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-pink-500">Ventas Hoy.</span>
+                    </h1>
+                    
+                    <p className="text-xl text-slate-500 max-w-lg leading-relaxed animate-fade-in-up" style={{animationDelay: '200ms'}}>
+                        Gestiona inventario, ventas y clientes en un solo lugar. 
+                        Sin instalaciones complejas. <b>Todo en la nube.</b>
+                    </p>
 
-                            <form onSubmit={handleSendCode} className="space-y-6">
-                                <div className="space-y-2">
-                                    <label className="text-xs font-bold text-slate-400 uppercase ml-1">Número de Celular</label>
-                                    <div className="relative group">
-                                        <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-3 border-r border-slate-200 pr-3">
-                                            <span className="text-2xl">🇵🇪</span>
-                                        </div>
-                                        <input 
-                                            type="tel" 
-                                            value={phone}
-                                            onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
-                                            className="w-full pl-20 pr-4 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-violet-500 outline-none font-bold text-xl text-slate-800 transition-all placeholder-slate-300 group-hover:bg-white focus:bg-white focus:ring-4 focus:ring-violet-50" 
-                                            placeholder="900 000 000"
-                                            autoFocus
-                                        />
-                                    </div>
-                                </div>
+                    <div className="grid grid-cols-2 gap-4 max-w-md animate-fade-in-up" style={{animationDelay: '300ms'}}>
+                        <div className="p-4 bg-white/60 backdrop-blur-md rounded-2xl border border-white/50 shadow-sm flex items-center gap-3">
+                            <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg"><Zap className="w-6 h-6"/></div>
+                            <div>
+                                <p className="font-bold text-slate-800">Rápido</p>
+                                <p className="text-xs text-slate-500">Ventas en segundos</p>
+                            </div>
+                        </div>
+                        <div className="p-4 bg-white/60 backdrop-blur-md rounded-2xl border border-white/50 shadow-sm flex items-center gap-3">
+                            <div className="p-2 bg-pink-100 text-pink-600 rounded-lg"><ShieldCheck className="w-6 h-6"/></div>
+                            <div>
+                                <p className="font-bold text-slate-800">Seguro</p>
+                                <p className="text-xs text-slate-500">Datos encriptados</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
-                                <button 
-                                    disabled={isLoading}
-                                    className="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold text-lg shadow-xl hover:shadow-2xl hover:bg-black hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3"
-                                >
-                                    {isLoading ? <Loader2 className="w-6 h-6 animate-spin"/> : (
-                                        <>
-                                            <span>Enviar Código</span>
-                                            <ArrowRight className="w-5 h-5"/>
-                                        </>
-                                    )}
+            {/* DERECHA: FORMULARIO FLOTANTE (Glassmorphism) */}
+            <div className="flex items-center justify-center">
+                <div className="w-full max-w-md bg-white/80 backdrop-blur-2xl p-8 rounded-[3rem] shadow-2xl shadow-indigo-200/50 border border-white relative overflow-hidden animate-fade-in-up">
+                    
+                    {/* Header con Backdoor */}
+                    <div className="flex justify-between items-center mb-8">
+                        <div 
+                            className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-violet-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-indigo-200 cursor-pointer hover:scale-105 active:scale-95 transition-transform select-none"
+                            onClick={handleLogoClick}
+                        >
+                            {step === 'ADMIN_LOGIN' ? <Lock className="w-6 h-6"/> : <Rocket className="w-6 h-6"/>}
+                        </div>
+                        <h2 className="text-2xl font-black text-slate-800 tracking-tight">PosGo!</h2>
+                    </div>
+
+                    {step === 'ADMIN_LOGIN' ? (
+                        // --- VISTA SECRETA ADMIN ---
+                        <div className="bg-slate-900 p-6 rounded-3xl text-white shadow-inner animate-bounce-slight">
+                            <h3 className="font-bold text-lg mb-2 text-red-400 flex items-center gap-2"><Lock className="w-5 h-5"/> Modo Super Admin</h3>
+                            <p className="text-slate-400 text-sm mb-4">Ingresa la llave maestra para acceder al panel de control global.</p>
+                            <form onSubmit={handleAdminLogin} className="space-y-4">
+                                <input 
+                                    type="password" 
+                                    autoFocus
+                                    placeholder="Contraseña Maestra"
+                                    className="w-full p-4 bg-slate-800 border border-slate-700 rounded-xl focus:border-red-500 outline-none text-white font-mono placeholder-slate-600 transition-all"
+                                    value={adminPass}
+                                    onChange={(e) => setAdminPass(e.target.value)}
+                                />
+                                <button disabled={isLoading} className="w-full py-4 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold shadow-lg shadow-red-900/20 transition-all">
+                                    {isLoading ? 'Desbloqueando...' : 'Acceder'}
                                 </button>
+                                <button type="button" onClick={() => setStep('PHONE')} className="w-full py-2 text-slate-500 text-sm hover:text-white transition-colors">Cancelar</button>
                             </form>
                         </div>
                     ) : (
-                        <div className="animate-fade-in">
-                            <div className="bg-gradient-to-br from-violet-50 to-fuchsia-50 border-2 border-violet-100 rounded-[2rem] p-6 text-center shadow-lg shadow-violet-100/50">
-                                <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm animate-bounce-slight">
-                                    <Sparkles className="w-8 h-8 text-violet-600" />
-                                </div>
-                                <h2 className="text-2xl font-black text-slate-800 mb-2">Prueba PosGo! Gratis</h2>
-                                <p className="text-slate-600 font-medium text-sm mb-6 leading-relaxed">
-                                    Explora todas las funciones Premium sin registrarte. Usaremos un usuario de prueba automático.
-                                </p>
-                                
-                                <div className="bg-white p-4 rounded-xl border border-slate-100 mb-6 text-left shadow-sm">
-                                    <p className="text-xs font-bold text-slate-400 uppercase mb-2">Credenciales de Acceso</p>
-                                    <div className="flex items-center gap-3 mb-1">
-                                        <Smartphone className="w-4 h-4 text-violet-500" />
-                                        <span className="font-mono font-bold text-slate-700">900 100 100</span>
-                                    </div>
-                                    <div className="flex items-center gap-3">
-                                        <Lock className="w-4 h-4 text-violet-500" />
-                                        <span className="font-mono font-bold text-slate-700">****** (Cualquiera)</span>
-                                    </div>
-                                </div>
-
+                        // --- VISTA NORMAL (CLIENTE) ---
+                        <>
+                            {/* Pestañas (Tabs) */}
+                            <div className="flex p-1 bg-slate-100/80 rounded-2xl mb-8">
                                 <button 
-                                    onClick={startDemo}
-                                    disabled={isLoading}
-                                    className="w-full py-4 bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white rounded-2xl font-bold text-lg shadow-xl shadow-violet-200 hover:shadow-violet-300 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3"
+                                    onClick={() => { setAuthTab('LOGIN'); setStep('PHONE'); }}
+                                    className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all ${authTab === 'LOGIN' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
                                 >
-                                    {isLoading ? <Loader2 className="w-6 h-6 animate-spin"/> : (
-                                        <>
-                                            <PlayCircle className="w-6 h-6" />
-                                            <span>Iniciar Demo Ahora</span>
-                                        </>
-                                    )}
+                                    Ingresar
+                                </button>
+                                <button 
+                                    onClick={() => setAuthTab('DEMO')}
+                                    className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all ${authTab === 'DEMO' ? 'bg-white shadow-sm text-pink-600' : 'text-slate-400 hover:text-slate-600'}`}
+                                >
+                                    Modo Demo
                                 </button>
                             </div>
-                        </div>
+
+                            {authTab === 'DEMO' ? (
+                                // --- CONTENIDO TAB DEMO ---
+                                <div className="space-y-6 text-center animate-fade-in">
+                                    <div className="w-20 h-20 bg-pink-50 rounded-full flex items-center justify-center mx-auto mb-2">
+                                        <Play className="w-10 h-10 text-pink-500 ml-1"/>
+                                    </div>
+                                    <h3 className="text-xl font-black text-slate-800">¡Prueba PosGo! Gratis</h3>
+                                    <p className="text-slate-500 text-sm">
+                                        Explora todas las funciones premium con datos de prueba pre-cargados. Sin compromiso.
+                                    </p>
+                                    
+                                    <div className="bg-slate-50 p-4 rounded-2xl text-left border border-slate-100">
+                                        <p className="text-xs font-bold text-slate-400 uppercase mb-2">Credenciales de Prueba</p>
+                                        <div className="flex justify-between items-center">
+                                            <span className="font-mono text-slate-600 font-bold">900 100 100</span>
+                                            <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-lg font-bold">Activo</span>
+                                        </div>
+                                    </div>
+
+                                    <button 
+                                        onClick={startDemo}
+                                        disabled={isLoading}
+                                        className="w-full py-4 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-2xl font-bold shadow-lg shadow-pink-200 hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                                    >
+                                        {isLoading ? <Loader2 className="animate-spin w-5 h-5"/> : <><Rocket className="w-5 h-5"/> Iniciar Demo Ahora</>}
+                                    </button>
+                                </div>
+                            ) : (
+                                // --- CONTENIDO TAB LOGIN ---
+                                <div className="animate-fade-in">
+                                    {step === 'PHONE' && (
+                                        <form onSubmit={handleSendCode} className="space-y-6">
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-400 uppercase mb-2 pl-2">Número de Celular</label>
+                                                <div className="relative">
+                                                    <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-2 border-r border-slate-200 pr-3">
+                                                        <img src="https://upload.wikimedia.org/wikipedia/commons/c/cf/Flag_of_Peru.svg" alt="PE" className="w-5 h-auto rounded-sm shadow-sm"/>
+                                                        <span className="font-bold text-slate-600 text-sm">+51</span>
+                                                    </div>
+                                                    <input 
+                                                        type="tel" 
+                                                        placeholder="900 000 000"
+                                                        className="w-full pl-[5.5rem] pr-4 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-indigo-500 focus:bg-white outline-none font-bold text-lg text-slate-800 transition-all placeholder-slate-300"
+                                                        value={phone}
+                                                        onChange={(e) => setPhone(e.target.value)}
+                                                        autoFocus
+                                                    />
+                                                </div>
+                                            </div>
+                                            <button 
+                                                disabled={isLoading || !phone}
+                                                className="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold shadow-xl shadow-slate-200 hover:shadow-2xl hover:-translate-y-1 disabled:opacity-50 disabled:transform-none transition-all flex items-center justify-center gap-2"
+                                            >
+                                                {isLoading ? <Loader2 className="animate-spin w-5 h-5"/> : <><Smartphone className="w-5 h-5"/> Enviar Código</>}
+                                            </button>
+                                        </form>
+                                    )}
+
+                                    {step === 'OTP' && (
+                                        <form onSubmit={handleVerifyOtp} className="space-y-6 animate-fade-in-up">
+                                            <div className="text-center mb-6">
+                                                <div className="inline-flex items-center justify-center w-12 h-12 bg-indigo-50 text-indigo-600 rounded-full mb-3">
+                                                    <Smartphone className="w-6 h-6"/>
+                                                </div>
+                                                <h3 className="font-bold text-slate-800">Verifica tu número</h3>
+                                                <p className="text-sm text-slate-500">Enviamos un código al <b>{phone}</b></p>
+                                            </div>
+
+                                            <div>
+                                                <input 
+                                                    type="text" 
+                                                    maxLength={6}
+                                                    placeholder="000 000"
+                                                    className="w-full p-4 bg-white border-2 border-indigo-100 rounded-2xl focus:border-indigo-500 focus:ring-4 focus:ring-indigo-50 outline-none font-mono text-3xl text-center tracking-widest text-indigo-600 transition-all"
+                                                    value={otp}
+                                                    onChange={(e) => setOtp(e.target.value)}
+                                                    autoFocus
+                                                />
+                                            </div>
+
+                                            <button 
+                                                disabled={isLoading || otp.length < 4}
+                                                className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-indigo-200 hover:shadow-xl hover:scale-[1.02] transition-all flex items-center justify-center gap-2"
+                                            >
+                                                {isLoading ? <Loader2 className="animate-spin w-5 h-5"/> : <><CheckCircle className="w-5 h-5"/> Validar Acceso</>}
+                                            </button>
+                                            
+                                            <button 
+                                                type="button" 
+                                                onClick={() => setStep('PHONE')}
+                                                className="w-full py-2 text-slate-400 text-xs font-bold hover:text-indigo-600 transition-colors"
+                                            >
+                                                Cambiar número
+                                            </button>
+                                        </form>
+                                    )}
+                                </div>
+                            )}
+                        </>
                     )}
                 </div>
-              )}
-
-              {step === 'OTP' && (
-                  <div className="animate-fade-in-up">
-                      <button onClick={() => setStep('PHONE')} className="text-sm font-bold text-slate-400 hover:text-slate-600 mb-6 flex items-center gap-1 transition-colors">
-                          <ArrowRight className="w-4 h-4 rotate-180"/> Corregir número
-                      </button>
-                      <h2 className="text-3xl font-black text-slate-800 mb-2">Verificación</h2>
-                      <p className="text-slate-500 mb-8 font-medium">Ingresa el código mágico enviado a <span className="text-violet-600 font-bold">{phone}</span></p>
-
-                      <form onSubmit={handleVerifyOtp} className="space-y-6">
-                          <input 
-                            type="number"
-                            placeholder="000000"
-                            className="w-full text-center text-4xl font-black tracking-[0.5em] py-5 bg-slate-50 border-b-4 border-slate-200 focus:border-violet-500 outline-none text-slate-800 transition-all placeholder-slate-200 rounded-xl focus:bg-white"
-                            value={otp}
-                            onChange={(e) => setOtp(e.target.value.slice(0,6))}
-                            autoFocus
-                          />
-                          
-                          {authTab === 'DEMO' && (
-                              <p className="text-center text-sm text-violet-600 font-bold bg-violet-50 p-2 rounded-lg animate-pulse">
-                                  💡 Tip: Escribe cualquier código (ej. 123456)
-                              </p>
-                          )}
-
-                          <button 
-                              disabled={isLoading || otp.length < 6}
-                              className="w-full py-4 bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white rounded-2xl font-bold text-lg shadow-xl shadow-violet-200 hover:shadow-violet-300 hover:scale-[1.02] transition-all disabled:opacity-50 disabled:transform-none"
-                          >
-                              {isLoading ? <Loader2 className="w-6 h-6 animate-spin mx-auto"/> : 'Validar Código'}
-                          </button>
-                      </form>
-                  </div>
-              )}
-
-              {step === 'ADMIN_LOGIN' && (
-                  <div className="animate-fade-in-up">
-                      <div className="bg-red-50 p-4 rounded-2xl border border-red-100 flex items-center gap-3 mb-6">
-                        <div className="p-2 bg-red-100 rounded-lg"><Lock className="w-5 h-5 text-red-600"/></div>
-                        <div>
-                            <p className="font-bold text-red-700 text-sm">Modo Dios</p>
-                            <p className="text-xs text-red-500">Acceso restringido al Super Admin</p>
-                        </div>
-                      </div>
-                      <form onSubmit={handleAdminLogin} className="space-y-6">
-                          <div className="space-y-2">
-                              <label className="text-xs font-bold text-slate-400 uppercase ml-1">Clave Maestra</label>
-                              <input 
-                                  type="password" 
-                                  value={adminPass}
-                                  onChange={(e) => setAdminPass(e.target.value)}
-                                  className="w-full px-4 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-red-500 outline-none font-bold text-xl text-slate-800 transition-all placeholder-slate-300" 
-                                  placeholder="••••••••"
-                                  autoFocus
-                              />
-                          </div>
-                          <button 
-                              disabled={isLoading}
-                              className="w-full py-4 bg-red-600 text-white rounded-2xl font-bold text-lg shadow-xl shadow-red-200 hover:bg-red-700 hover:scale-[1.02] transition-all"
-                          >
-                              {isLoading ? <Loader2 className="w-6 h-6 animate-spin mx-auto"/> : 'Entrar al Sistema'}
-                          </button>
-                          <button type="button" onClick={() => setStep('PHONE')} className="w-full py-3 text-slate-400 font-bold text-sm hover:text-slate-600">Volver al Login</button>
-                      </form>
-                  </div>
-              )}
-           </div>
+            </div>
         </div>
-      </div>
     </div>
   );
 };
