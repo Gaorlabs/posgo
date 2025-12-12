@@ -1,4 +1,21 @@
 
+export enum ViewState {
+  POS,
+  ADMIN,
+  INVENTORY,
+  PURCHASES,
+  REPORTS,
+  SETTINGS,
+  SUPER_ADMIN
+}
+
+export interface ProductVariant {
+  id: string;
+  name: string;
+  price: number;
+  stock: number;
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -6,111 +23,57 @@ export interface Product {
   category: string;
   stock: number;
   barcode?: string;
+  hasVariants?: boolean;
+  variants?: ProductVariant[];
+  images?: string[]; // Changed from single image to array
   description?: string;
-  cost?: number; // Cost price for profit calculation
+  cost?: number; // Added to match Supabase logic if needed visually
 }
 
 export interface CartItem extends Product {
   quantity: number;
-  discount?: number; // Amount to subtract per unit
+  selectedVariantId?: string;
+  selectedVariantName?: string;
+  discount?: number;
 }
 
-export type PaymentMethod = 'cash' | 'card' | 'yape' | 'plin';
+export type PaymentMethod = 'cash' | 'card' | 'yape' | 'plin' | 'transfer';
 
 export interface PaymentDetail {
   method: PaymentMethod;
   amount: number;
 }
 
-export interface Customer {
-  id: string;
-  name: string;
-  phone?: string;
-  dni?: string;
-  email?: string;
-  totalPurchases: number;
-  lastPurchaseDate?: string;
-}
-
 export interface Transaction {
   id: string;
-  date: string; // ISO string
+  date: string;
   items: CartItem[];
   subtotal: number;
   tax: number;
   discount: number;
   total: number;
-  paymentMethod: PaymentMethod; // Primary method or 'mixed'
-  payments?: PaymentDetail[]; // Detailed breakdown for split payments
-  customerId?: string;
-  customerName?: string;
-  profit: number; // Calculated at time of sale
-  shiftId?: string; // Link to the cash shift
-}
-
-export interface PurchaseItem {
-  productId: string;
-  productName: string;
-  quantity: number;
-  cost: number;
-}
-
-export interface Purchase {
-  id: string;
-  date: string;
-  supplier: string;
-  invoiceNumber: string;
-  items: PurchaseItem[];
-  totalCost: number;
-}
-
-export interface Supplier {
-  id: string;
-  name: string;
-  ruc?: string;
-  phone?: string;
-  email?: string;
-  address?: string;
-  contactName?: string;
-}
-
-export enum ViewState {
-  POS = 'POS',
-  INVENTORY = 'INVENTORY',
-  PURCHASES = 'PURCHASES',
-  SALES = 'SALES',
-  CUSTOMERS = 'CUSTOMERS',
-  SETTINGS = 'SETTINGS'
+  paymentMethod: string;
+  payments?: PaymentDetail[];
+  profit: number;
+  shiftId?: string;
+  storeId?: string; // Supabase linkage
 }
 
 export interface StoreSettings {
-  storeName: string;
-  ruc: string;
-  address: string;
-  phone: string;
-  taxRate: number; // Percentage, e.g., 0.16 for 16%
+  name: string;
   currency: string;
-  pricesIncludeTax: boolean; // Determines if tax is added on top or extracted
-  logo?: string; // Optional logo base64 string
+  taxRate: number;
+  pricesIncludeTax: boolean;
+  address?: string;
+  phone?: string;
 }
 
-export interface Stats {
-  totalSales: number;
-  totalTransactions: number;
-  topSellingProduct: string;
-}
-
-// --- Cash Management Types ---
-
-export type CashMovementType = 'OPEN' | 'CLOSE' | 'IN' | 'OUT';
-
-export interface CashMovement {
+export interface UserProfile {
   id: string;
-  shiftId: string;
-  type: CashMovementType;
-  amount: number;
-  description: string;
-  timestamp: string;
+  name: string;
+  role: 'admin' | 'cashier' | 'super_admin' | 'owner';
+  storeId?: string; // Link to Supabase Store
+  email?: string;
 }
 
 export interface CashShift {
@@ -118,9 +81,60 @@ export interface CashShift {
   startTime: string;
   endTime?: string;
   startAmount: number;
-  endAmount?: number; // Counted cash
-  expectedAmount?: number; // Calculated cash
+  endAmount?: number;
   status: 'OPEN' | 'CLOSED';
   totalSalesCash: number;
   totalSalesDigital: number;
+}
+
+export interface CashMovement {
+  id: string;
+  shiftId: string;
+  type: 'OPEN' | 'CLOSE' | 'IN' | 'OUT';
+  amount: number;
+  description: string;
+  timestamp: string;
+}
+
+export interface Customer {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+}
+
+export interface Supplier {
+  id: string;
+  name: string;
+  contact?: string;
+}
+
+export interface PurchaseItem {
+  productId: string;
+  quantity: number;
+  cost: number;
+}
+
+export interface Purchase {
+  id: string;
+  date: string;
+  supplierId: string;
+  total: number;
+  items: PurchaseItem[];
+}
+
+export interface Lead {
+    id: string;
+    name: string;
+    business_name: string;
+    phone: string;
+    created_at: string;
+    status?: 'NEW' | 'CONTACTED';
+}
+
+export interface Store {
+    id: string;
+    created_at: string;
+    settings: StoreSettings;
+    owner_id?: string;
 }
