@@ -1,129 +1,163 @@
-
-import React, { useState } from 'react';
-import { Rocket, ShoppingCart, Wallet, Package, ArrowRight, X, CheckCircle2 } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Sparkles, ArrowRight, X, MousePointerClick, ScanBarcode, Wallet, ShoppingBag } from 'lucide-react';
 
 interface OnboardingTourProps {
-  onComplete: () => void;
-  isOpen: boolean;
+    isOpen: boolean;
+    onComplete: () => void;
 }
 
-export const OnboardingTour: React.FC<OnboardingTourProps> = ({ onComplete, isOpen }) => {
-  const [currentStep, setCurrentStep] = useState(0);
-
-  if (!isOpen) return null;
-
-  const steps = [
+const TOUR_STEPS = [
     {
-      title: "¡Bienvenido a PosGo!",
-      description: "Este es el modo demostración. Aquí podrás probar todas las funciones sin miedo a romper nada. Vamos a darte un recorrido rápido.",
-      icon: <Rocket className="w-12 h-12 text-violet-600" />,
-      color: "bg-violet-50 border-violet-100",
-      btnColor: "bg-violet-600 hover:bg-violet-700"
+        target: 'center',
+        title: '¡Bienvenido a PosGo!',
+        content: 'La plataforma integral para tu negocio. Te guiaremos brevemente por las funciones principales del Punto de Venta.',
+        icon: Sparkles
     },
     {
-      title: "Tu Punto de Venta (POS)",
-      description: "A la izquierda tienes tus categorías y productos. Al centro, la barra de búsqueda y escáner. ¡Todo está diseñado para vender rápido!",
-      icon: <Package className="w-12 h-12 text-pink-500" />,
-      color: "bg-pink-50 border-pink-100",
-      btnColor: "bg-pink-600 hover:bg-pink-700"
+        target: 'pos-cash-control',
+        title: 'Control de Caja',
+        content: 'Aquí puedes registrar entradas, salidas y ver el estado de tu turno en tiempo real. ¡Esencial para tu cuadre diario!',
+        icon: Wallet,
+        position: 'bottom-left'
     },
     {
-      title: "Control de Caja",
-      description: "Antes de vender, siempre debes 'Abrir Caja'. El botón está arriba a la derecha. Registra tu sencillo inicial para llevar cuentas claras.",
-      icon: <Wallet className="w-12 h-12 text-emerald-500" />,
-      color: "bg-emerald-50 border-emerald-100",
-      btnColor: "bg-emerald-600 hover:bg-emerald-700"
+        target: 'pos-view-toggles',
+        title: 'Modos de Vista',
+        content: '¿Prefieres imágenes grandes o una lista rápida? Alterna entre vista de cuadrícula y lista compacta aquí.',
+        icon: MousePointerClick,
+        position: 'bottom-left'
     },
     {
-      title: "Carrito Inteligente",
-      description: "A la derecha se irán sumando tus ventas. Puedes hacer descuentos, cobrar con Yape/Plin o dividir la cuenta fácilmente.",
-      icon: <ShoppingCart className="w-12 h-12 text-indigo-500" />,
-      color: "bg-indigo-50 border-indigo-100",
-      btnColor: "bg-indigo-600 hover:bg-indigo-700"
+        target: 'pos-scanner-section',
+        title: 'Escáner Inteligente',
+        content: 'Usa tu lector de código de barras o busca manualmente por nombre. El sistema es rápido y fluido.',
+        icon: ScanBarcode,
+        position: 'bottom'
     },
     {
-      title: "¡Todo Listo!",
-      description: "Ya eres un experto. Empieza abriendo tu caja y realizando tu primera venta de prueba. ¡Disfruta la experiencia PosGo!",
-      icon: <CheckCircle2 className="w-12 h-12 text-green-600" />,
-      color: "bg-green-50 border-green-100",
-      btnColor: "bg-slate-900 hover:bg-black"
+        target: 'pos-cart',
+        title: 'Canasta de Venta',
+        content: 'Aquí aparecerán tus productos. Puedes modificar cantidades, aplicar descuentos y procesar el cobro.',
+        icon: ShoppingBag,
+        position: 'left'
     }
-  ];
+];
 
-  const handleNext = () => {
-    if (currentStep < steps.length - 1) {
-      setCurrentStep(currentStep + 1);
-    } else {
-      onComplete();
-    }
-  };
+export const OnboardingTour: React.FC<OnboardingTourProps> = ({ isOpen, onComplete }) => {
+    const [currentStep, setCurrentStep] = useState(0);
+    const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
 
-  const stepData = steps[currentStep];
+    const updatePosition = useCallback(() => {
+        const step = TOUR_STEPS[currentStep];
+        if (step.target === 'center') {
+            setTargetRect(null);
+            return;
+        }
 
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in">
-      <div className="relative w-full max-w-lg mx-4">
-        {/* Background Glow */}
-        <div className={`absolute inset-0 blur-3xl opacity-30 rounded-full transform scale-90 ${stepData.color.replace('bg-', 'bg-').replace('border-', 'text-')}`}></div>
-        
-        <div className="bg-white rounded-[2.5rem] shadow-2xl p-8 relative overflow-hidden animate-bounce-slight border-4 border-white">
-            
-            {/* Progress Bar */}
-            <div className="absolute top-0 left-0 w-full h-2 bg-slate-100">
-                <div 
-                    className={`h-full transition-all duration-500 ${stepData.btnColor}`} 
-                    style={{ width: `${((currentStep + 1) / steps.length) * 100}%` }}
-                ></div>
-            </div>
+        const element = document.getElementById(step.target);
+        if (element) {
+            const rect = element.getBoundingClientRect();
+            setTargetRect(rect);
+        }
+    }, [currentStep]);
 
-            <button onClick={onComplete} className="absolute top-6 right-6 text-slate-300 hover:text-slate-500 transition-colors">
-                <X className="w-6 h-6" />
-            </button>
+    useEffect(() => {
+        if (isOpen) {
+            // Small delay to ensure DOM is rendered
+            setTimeout(updatePosition, 300);
+            window.addEventListener('resize', updatePosition);
+            window.addEventListener('scroll', updatePosition);
+        }
+        return () => {
+            window.removeEventListener('resize', updatePosition);
+            window.removeEventListener('scroll', updatePosition);
+        };
+    }, [isOpen, currentStep, updatePosition]);
 
-            <div className="flex flex-col items-center text-center pt-6">
-                <div className={`w-24 h-24 rounded-full flex items-center justify-center mb-6 shadow-lg border-4 border-white ${stepData.color}`}>
-                    {stepData.icon}
-                </div>
-                
-                <h3 className="text-3xl font-black text-slate-800 mb-4 leading-tight">
-                    {stepData.title}
-                </h3>
-                
-                <p className="text-slate-500 text-lg font-medium mb-8 leading-relaxed">
-                    {stepData.description}
-                </p>
+    const handleNext = () => {
+        if (currentStep < TOUR_STEPS.length - 1) {
+            setCurrentStep(prev => prev + 1);
+        } else {
+            onComplete();
+            setCurrentStep(0);
+        }
+    };
 
-                <div className="flex items-center gap-2 w-full">
-                    {currentStep > 0 && (
-                        <button 
-                            onClick={() => setCurrentStep(currentStep - 1)}
-                            className="px-6 py-4 rounded-2xl font-bold text-slate-500 hover:bg-slate-100 transition-colors"
-                        >
-                            Atrás
-                        </button>
-                    )}
-                    <button 
-                        onClick={handleNext}
-                        className={`flex-1 py-4 rounded-2xl font-bold text-white shadow-lg transition-all transform hover:-translate-y-1 hover:shadow-xl flex items-center justify-center gap-2 ${stepData.btnColor}`}
-                    >
-                        {currentStep === steps.length - 1 ? '¡Comenzar!' : 'Siguiente'}
-                        {currentStep < steps.length - 1 && <ArrowRight className="w-5 h-5" />}
-                    </button>
-                </div>
-            </div>
-            
-            {/* Step Indicators */}
-            <div className="flex justify-center gap-2 mt-8">
-                {steps.map((_, idx) => (
+    if (!isOpen) return null;
+
+    const step = TOUR_STEPS[currentStep];
+    const isCenter = step.target === 'center';
+
+    return (
+        <div className="fixed inset-0 z-[100] overflow-hidden">
+            {/* Background Overlay with Hole (Spotlight) */}
+            {isCenter ? (
+                <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-sm animate-fade-in" />
+            ) : (
+                <div className="absolute inset-0 transition-all duration-500 ease-in-out">
+                    {/* We construct a massive box shadow around the highlighted area to create the spotlight effect */}
                     <div 
-                        key={idx} 
-                        className={`w-2 h-2 rounded-full transition-all duration-300 ${idx === currentStep ? 'w-8 bg-slate-800' : 'bg-slate-200'}`}
-                    ></div>
-                ))}
-            </div>
+                        className="absolute rounded-2xl transition-all duration-300 ease-out border-2 border-indigo-400 shadow-[0_0_0_9999px_rgba(15,23,42,0.8)] animate-pulse"
+                        style={{
+                            top: targetRect ? targetRect.top - 8 : '50%',
+                            left: targetRect ? targetRect.left - 8 : '50%',
+                            width: targetRect ? targetRect.width + 16 : 0,
+                            height: targetRect ? targetRect.height + 16 : 0,
+                            opacity: targetRect ? 1 : 0
+                        }}
+                    />
+                </div>
+            )}
 
+            {/* Tooltip Card */}
+            <div 
+                className={`absolute transition-all duration-500 ease-out flex flex-col items-center justify-center pointer-events-none w-full h-full`}
+            >
+                {/* Positioning Wrapper */}
+                <div 
+                    className="pointer-events-auto bg-white rounded-[2rem] p-8 max-w-sm w-full shadow-2xl relative animate-fade-in-up border-4 border-slate-900/5"
+                    style={!isCenter && targetRect ? {
+                        position: 'fixed',
+                        top: step.position === 'bottom' ? targetRect.bottom + 24 : 
+                             step.position === 'bottom-left' ? targetRect.bottom + 24 :
+                             targetRect.top + (targetRect.height/2) - 100, // Approximate center vertically
+                        left: step.position === 'left' ? targetRect.left - 400 : 
+                              step.position === 'bottom-left' ? targetRect.left :
+                              targetRect.left + (targetRect.width/2) - 192, // Center horizontally (384px width / 2)
+                        transform: 'none'
+                    } : {}}
+                >
+                    {/* Step Indicator */}
+                    <div className="absolute -top-4 -right-4 w-12 h-12 bg-indigo-600 rounded-full flex items-center justify-center text-white font-black border-4 border-white shadow-lg z-10">
+                        {currentStep + 1}/{TOUR_STEPS.length}
+                    </div>
+
+                    <div className="w-16 h-16 bg-indigo-50 rounded-2xl flex items-center justify-center mb-6 text-indigo-600 shadow-inner">
+                        <step.icon className="w-8 h-8" />
+                    </div>
+
+                    <h3 className="text-2xl font-black text-slate-800 mb-3 tracking-tight">{step.title}</h3>
+                    <p className="text-slate-500 leading-relaxed mb-8 font-medium">
+                        {step.content}
+                    </p>
+
+                    <div className="flex gap-3 w-full">
+                        <button 
+                            onClick={onComplete}
+                            className="flex-1 py-3.5 text-slate-400 font-bold hover:text-slate-600 transition-colors text-sm"
+                        >
+                            Saltar
+                        </button>
+                        <button 
+                            onClick={handleNext}
+                            className="flex-[2] py-3.5 bg-indigo-600 text-white rounded-2xl font-bold text-sm hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 hover:shadow-xl hover:scale-105 flex items-center justify-center gap-2"
+                        >
+                            {currentStep === TOUR_STEPS.length - 1 ? '¡Empezar a Vender!' : 'Siguiente'}
+                            <ArrowRight className="w-4 h-4" />
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
-      </div>
-    </div>
-  );
+    );
 };
