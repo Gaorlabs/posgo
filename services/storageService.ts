@@ -15,6 +15,8 @@ const KEYS = {
   ACTIVE_SHIFT_ID: 'lumina_active_shift'
 };
 
+const DEMO_TEMPLATE_ID = '00000000-0000-0000-0000-000000000000'; // Special UUID for the Master Template
+
 // Helper to check if we are in DEMO mode or REAL mode
 const isDemo = () => {
     const session = localStorage.getItem(KEYS.SESSION);
@@ -57,13 +59,12 @@ export const StorageService = {
   // === SUPER ADMIN / LEADS ===
   saveLead: async (lead: Omit<Lead, 'id' | 'created_at'>) => {
       try {
-          // Changed to Upsert to handle duplicates based on phone constraint
           const { data, error } = await supabase.from('leads').upsert({
               name: lead.name,
               business_name: lead.business_name,
               phone: lead.phone,
               status: 'NEW'
-          }, { onConflict: 'phone' }).select(); // Requires unique constraint on 'phone' in DB
+          }, { onConflict: 'phone' }).select();
           
           if (error) throw error;
       } catch (e) {
@@ -87,24 +88,109 @@ export const StorageService = {
       await supabase.from('stores').delete().eq('id', storeId);
   },
 
+  // === DEMO MANAGEMENT (CLOUD BASED) ===
+  
+  // 1. Fetch Template from Supabase (Used by Super Admin AND when initializing new Demos)
+  getDemoTemplate: async (): Promise<Product[]> => {
+      try {
+          const { data: productsData, error } = await supabase
+              .from('products')
+              .select('*')
+              .eq('store_id', DEMO_TEMPLATE_ID);
+          
+          if (error || !productsData || productsData.length === 0) {
+              return MOCK_PRODUCTS; // Fallback if DB is empty
+          }
+
+          const { data: imagesData } = await supabase
+              .from('product_images')
+              .select('*')
+              .eq('store_id', DEMO_TEMPLATE_ID);
+
+          return productsData.map((p: any) => {
+              const prodImages = imagesData 
+                  ? imagesData.filter((img: any) => img.product_id === p.id).map((img: any) => img.image_data)
+                  : [];
+
+              return {
+                  id: p.id,
+                  name: p.name,
+                  price: Number(p.price),
+                  category: p.category,
+                  stock: Number(p.stock),
+                  barcode: p.barcode,
+                  hasVariants: false, // Simplification for demo persistence
+                  variants: [],
+                  images: prodImages 
+              };
+          });
+      } catch (e) {
+          console.error("Error fetching demo template:", e);
+          return MOCK_PRODUCTS;
+      }
+  },
+
+  // 2. Save Template to Supabase (Only Super Admin calls this)
+  saveDemoTemplate: async (products: Product[]) => {
+      // Logic: Sync the provided list with the DB for DEMO_TEMPLATE_ID
+      // A simple strategy: Delete all for this ID and Re-insert (for full sync)
+      // Or upsert. Let's stick to Upsert/Delete logic handled by Super Admin view individually or bulk.
+      
+      // For the "Save Product" button in Super Admin:
+      // It calls saveProductWithImages but we need to intercept it or use a specific function.
+      // We will reuse saveProducts but pass the DEMO_TEMPLATE_ID manually.
+      
+      // This function specifically handles the bulk save or single updates if passed as array
+      for (const p of products) {
+          const payload: any = {
+              id: p.id,
+              name: p.name,
+              price: p.price,
+              stock: p.stock,
+              category: p.category,
+              barcode: p.barcode,
+              store_id: DEMO_TEMPLATE_ID
+          };
+          await supabase.from('products').upsert(payload);
+          
+          // Handle images
+          if (p.images) {
+              await supabase.from('product_images').delete().eq('product_id', p.id).eq('store_id', DEMO_TEMPLATE_ID);
+              if (p.images.length > 0) {
+                  const imageInserts = p.images.map(imgData => ({
+                      product_id: p.id,
+                      image_data: imgData,
+                      store_id: DEMO_TEMPLATE_ID
+                  }));
+                  await supabase.from('product_images').insert(imageInserts);
+              }
+          }
+      }
+  },
+
+  deleteDemoProduct: async (productId: string) => {
+      await supabase.from('products').delete().eq('id', productId).eq('store_id', DEMO_TEMPLATE_ID);
+  },
+
   // === PRODUCTS ===
   getProducts: async (): Promise<Product[]> => {
     if (isDemo()) {
         const s = localStorage.getItem(KEYS.PRODUCTS);
-        return s ? JSON.parse(s) : MOCK_PRODUCTS;
+        if (!s) {
+            // If local storage is empty in demo, try fetching template (Async init required in App)
+            return MOCK_PRODUCTS; 
+        }
+        return JSON.parse(s);
     } else {
         const storeId = await getStoreId();
         if(!storeId) return []; 
 
-        // 1. Fetch Products
         const { data: productsData, error: productsError } = await supabase.from('products').select('*').eq('store_id', storeId);
         if (productsError || !productsData) return [];
 
-        // 2. Fetch Images for this store's products
         const { data: imagesData } = await supabase.from('product_images').select('*').eq('store_id', storeId);
         
         return productsData.map((p: any) => {
-            // Filter images for this product
             const prodImages = imagesData 
                 ? imagesData.filter((img: any) => img.product_id === p.id).map((img: any) => img.image_data)
                 : [];
@@ -118,20 +204,20 @@ export const StorageService = {
                 barcode: p.barcode,
                 hasVariants: false, 
                 variants: [],
-                images: prodImages // Assign images array
+                images: prodImages 
             };
         });
     }
   },
   
-  // New Method specifically to handle saving product + images logic
   saveProductWithImages: async (product: Product) => {
       if (isDemo()) {
-          const products = await StorageService.getProducts();
-          const index = products.findIndex(p => p.id === product.id);
+          // This saves to the CURRENT active local session (Browser)
+          const products = JSON.parse(localStorage.getItem(KEYS.PRODUCTS) || '[]');
+          const index = products.findIndex((p: any) => p.id === product.id);
           let updatedProducts;
           if (index >= 0) {
-              updatedProducts = products.map(p => p.id === product.id ? product : p);
+              updatedProducts = products.map((p: any) => p.id === product.id ? product : p);
           } else {
               updatedProducts = [...products, product];
           }
@@ -140,7 +226,6 @@ export const StorageService = {
           const storeId = await getStoreId();
           if (!storeId) return;
 
-          // 1. Save Product Info
           const payload: any = {
                 id: product.id,
                 name: product.name,
@@ -157,11 +242,8 @@ export const StorageService = {
               return;
           }
 
-          // 2. Sync Images (Simple Strategy: Delete all for product, re-insert)
-          // Ideally we would diff this, but for < 2 images, delete/insert is fine.
           if (product.images) {
               await supabase.from('product_images').delete().eq('product_id', product.id);
-              
               if (product.images.length > 0) {
                   const imageInserts = product.images.map(imgData => ({
                       product_id: product.id,
@@ -174,7 +256,6 @@ export const StorageService = {
       }
   },
 
-  // Used for bulk stock updates (e.g. after purchase) - Does NOT touch images to be safe/fast
   saveProducts: async (products: Product[]) => {
     if (isDemo()) {
         localStorage.setItem(KEYS.PRODUCTS, JSON.stringify(products));
@@ -192,13 +273,12 @@ export const StorageService = {
                 barcode: p.barcode,
                 store_id: storeId
             };
-            const { error } = await supabase.from('products').upsert(payload);
-            if (error) console.error('Error saving product', error);
+            await supabase.from('products').upsert(payload);
         }
     }
   },
 
-  // === TRANSACTIONS ===
+  // === TRANSACTIONS & OTHERS ===
   getTransactions: async (): Promise<Transaction[]> => {
     if (isDemo()) {
         const s = localStorage.getItem(KEYS.TRANSACTIONS);
@@ -206,7 +286,6 @@ export const StorageService = {
     } else {
         const storeId = await getStoreId();
         if(!storeId) return [];
-
         const { data, error } = await supabase.from('transactions').select('*').eq('store_id', storeId).order('date', { ascending: false });
         if (error || !data) return [];
         return data.map((t: any) => ({
@@ -226,12 +305,12 @@ export const StorageService = {
   },
   saveTransaction: async (transaction: Transaction) => {
     if (isDemo()) {
-        const current = await StorageService.getTransactions();
+        const currentString = localStorage.getItem(KEYS.TRANSACTIONS);
+        const current = currentString ? JSON.parse(currentString) : [];
         localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify([transaction, ...current]));
     } else {
         const storeId = await getStoreId();
         if (!storeId) return;
-
         const { error } = await supabase.from('transactions').insert({
             id: transaction.id,
             shift_id: transaction.shiftId,
@@ -249,17 +328,16 @@ export const StorageService = {
     }
   },
 
-  // === PURCHASES ===
   getPurchases: async (): Promise<Purchase[]> => {
     const s = localStorage.getItem(KEYS.PURCHASES);
     return s ? JSON.parse(s) : [];
   },
   savePurchase: async (purchase: Purchase) => {
-    const current = await StorageService.getPurchases();
+    const s = localStorage.getItem(KEYS.PURCHASES);
+    const current = s ? JSON.parse(s) : [];
     localStorage.setItem(KEYS.PURCHASES, JSON.stringify([purchase, ...current]));
   },
 
-  // === SETTINGS ===
   getSettings: async (): Promise<StoreSettings> => {
     if (isDemo()) {
         const s = localStorage.getItem(KEYS.SETTINGS);
@@ -267,7 +345,6 @@ export const StorageService = {
     } else {
         const storeId = await getStoreId();
         if (!storeId) return DEFAULT_SETTINGS;
-
         const { data } = await supabase.from('stores').select('settings').eq('id', storeId).single();
         return data?.settings || DEFAULT_SETTINGS;
     }
@@ -283,7 +360,6 @@ export const StorageService = {
     }
   },
 
-  // === CUSTOMERS ===
   getCustomers: async (): Promise<Customer[]> => {
     if (isDemo()) {
         const s = localStorage.getItem(KEYS.CUSTOMERS);
@@ -296,17 +372,16 @@ export const StorageService = {
     }
   },
   
-  // === SUPPLIERS ===
   getSuppliers: (): Supplier[] => {
     const s = localStorage.getItem(KEYS.SUPPLIERS);
     return s ? JSON.parse(s) : [];
   },
   saveSupplier: (supplier: Supplier) => {
-    const current = JSON.parse(localStorage.getItem(KEYS.SUPPLIERS) || '[]');
+    const s = localStorage.getItem(KEYS.SUPPLIERS);
+    const current = s ? JSON.parse(s) : [];
     localStorage.setItem(KEYS.SUPPLIERS, JSON.stringify([...current, supplier]));
   },
 
-  // === SHIFTS ===
   getShifts: async (): Promise<CashShift[]> => {
     if (isDemo()) {
         const s = localStorage.getItem(KEYS.SHIFTS);
@@ -330,15 +405,15 @@ export const StorageService = {
   },
   saveShift: async (shift: CashShift) => {
     if (isDemo()) {
-        const shifts = await StorageService.getShifts();
-        const idx = shifts.findIndex(s => s.id === shift.id);
+        const s = localStorage.getItem(KEYS.SHIFTS);
+        const shifts = s ? JSON.parse(s) : [];
+        const idx = shifts.findIndex((x: any) => x.id === shift.id);
         if (idx >= 0) shifts[idx] = shift;
         else shifts.unshift(shift);
         localStorage.setItem(KEYS.SHIFTS, JSON.stringify(shifts));
     } else {
          const storeId = await getStoreId();
          if (!storeId) return;
-
          const payload: any = {
              id: shift.id,
              start_time: shift.startTime,
@@ -354,7 +429,6 @@ export const StorageService = {
     }
   },
   
-  // === MOVEMENTS ===
   getMovements: async (): Promise<CashMovement[]> => {
       if (isDemo()) {
           const s = localStorage.getItem(KEYS.MOVEMENTS);
@@ -376,12 +450,12 @@ export const StorageService = {
   },
   saveMovement: async (movement: CashMovement) => {
       if (isDemo()) {
-          const moves = await StorageService.getMovements();
+          const s = localStorage.getItem(KEYS.MOVEMENTS);
+          const moves = s ? JSON.parse(s) : [];
           localStorage.setItem(KEYS.MOVEMENTS, JSON.stringify([...moves, movement]));
       } else {
           const storeId = await getStoreId();
           if (!storeId) return;
-
           await supabase.from('cash_movements').insert({
               id: movement.id,
               shift_id: movement.shiftId,
@@ -402,8 +476,13 @@ export const StorageService = {
       else localStorage.removeItem(KEYS.ACTIVE_SHIFT_ID);
   },
 
-  resetDemoData: () => {
-      localStorage.setItem(KEYS.PRODUCTS, JSON.stringify(MOCK_PRODUCTS));
+  resetDemoData: async () => {
+      // CRITICAL: Fetch the Cloud-Stored Demo Template
+      const template = await StorageService.getDemoTemplate();
+      
+      // Initialize Session with Template
+      localStorage.setItem(KEYS.PRODUCTS, JSON.stringify(template));
+      
       localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify([]));
       localStorage.setItem(KEYS.PURCHASES, JSON.stringify([]));
       localStorage.setItem(KEYS.SHIFTS, JSON.stringify([]));
