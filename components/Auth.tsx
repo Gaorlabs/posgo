@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { UserProfile } from '../types';
 import { 
   Rocket, ArrowRight, MessageSquare, CheckCircle, RefreshCw, 
-  Sparkles, ShieldAlert, Lock, ChevronDown, AlertCircle, PlayCircle,
-  ShoppingBag, Package, BarChart3, Zap, User, Building2, Star
+  ShieldAlert, Lock, ChevronDown, AlertCircle,
+  Package, Zap, User, Building2, Mail
 } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import { StorageService } from '../services/storageService';
@@ -32,6 +32,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   // God Mode
   const [logoClicks, setLogoClicks] = useState(0);
   const [showGodMode, setShowGodMode] = useState(false);
+  const [adminEmail, setAdminEmail] = useState('');
   const [masterPassword, setMasterPassword] = useState('');
   const [godError, setGodError] = useState('');
 
@@ -70,7 +71,6 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     e.preventDefault();
     if (!validatePhone()) return;
 
-    // Additional validation for Demo
     if (activeTab === 'DEMO') {
         if (demoName.length < 3) {
             setValidationError('Por favor ingresa tu nombre.');
@@ -83,54 +83,47 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     }
 
     setLoading(true);
-    const fullPhone = `${countryCode}${phoneNumber}`;
+    const cleanPhone = phoneNumber.replace(/\D/g, '');
+    const fullPhone = `${countryCode}${cleanPhone}`;
 
     if (activeTab === 'CLIENT') {
-        // --- EXISTING SUPABASE FLOW ---
         try {
             const { error } = await supabase.auth.signInWithOtp({
                 phone: `+${fullPhone}`
             });
-            if (error) {
-                console.error("Error sending OTP:", error.message);
-            }
+            if (error) console.error("Error sending OTP:", error.message);
         } catch (err) {
             console.error(err);
         }
         setLoginStep('OTP');
         setLoading(false);
-
     } else {
-        // --- DEMO FLOW (SAVE TO SUPABASE + N8N) ---
         const randomOtp = Math.floor(100000 + Math.random() * 900000).toString();
         setGeneratedDemoOtp(randomOtp);
 
         try {
-            // 1. Save Lead to Supabase (so Super Admin can see it)
             await StorageService.saveLead({
                 name: demoName,
                 business_name: demoBusiness,
                 phone: fullPhone
             });
 
-            // 2. Trigger n8n Webhook for WhatsApp
-            const payload = {
-                name: demoName,
-                phone: fullPhone,
-                business_name: demoBusiness,
-                otp: randomOtp,
-                event: "verification_request",
-                date: new Date().toISOString()
-            };
+            const formData = new URLSearchParams();
+            formData.append('name', demoName);
+            formData.append('phone', fullPhone);
+            formData.append('business_name', demoBusiness);
+            formData.append('otp', randomOtp);
+            formData.append('event', 'verification_request');
+            formData.append('date', new Date().toISOString());
 
             const webhookUrl = 'https://webhook.red51.site/webhook/posgo_demos';
+            
             await fetch(webhookUrl, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            }).catch(err => console.warn("Webhook CORS warning (expected)", err));
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: formData
+            }).catch(err => console.warn("Webhook fetch warning:", err));
 
-            console.log("Demo OTP Generated:", randomOtp);
             setLoginStep('OTP');
         } catch (error) {
             console.error("Error triggering automation:", error);
@@ -144,7 +137,8 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const fullPhone = `${countryCode}${phoneNumber}`;
+    const cleanPhone = phoneNumber.replace(/\D/g, '');
+    const fullPhone = `${countryCode}${cleanPhone}`;
 
     if (activeTab === 'CLIENT') {
         try {
@@ -174,15 +168,11 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             setLoading(false);
         }
     } else {
-        // --- DEMO FLOW VERIFICATION ---
         if (otpCode === generatedDemoOtp || otpCode === '000000') {
-            // CREATE REAL USER IN SUPABASE TO TRIGGER SQL
             try {
-                // Construct a fake email from phone to satisfy Supabase Auth
                 const email = `${fullPhone}@demo.posgo`;
-                const password = `${fullPhone}`; // Simple password based on phone
+                const password = `${fullPhone}`;
 
-                // Attempt to Sign Up
                 const { data, error } = await supabase.auth.signUp({
                     email,
                     password,
@@ -196,7 +186,6 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                 });
 
                 if (error) {
-                    // If user already exists, try signing in
                     if (error.message.includes('already registered') || error.status === 400 || error.status === 422) {
                          const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
                             email,
@@ -209,7 +198,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                              onLogin({ 
                                 id: signInData.user.id, 
                                 name: demoName,
-                                role: 'admin', // Owner maps to admin in frontend logic usually
+                                role: 'admin',
                                 email: email
                             });
                         }
@@ -217,7 +206,6 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                         throw error;
                     }
                 } else if (data.user) {
-                     // Successful creation
                      onLogin({ 
                         id: data.user.id, 
                         name: demoName,
@@ -228,7 +216,6 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
             } catch (err: any) {
                 console.error("Error creating demo user:", err);
-                // Fallback to local demo if backend fails
                 setValidationError('Error conectando con el servidor. Accediendo modo local...');
                 setTimeout(() => {
                     onLogin({ 
@@ -257,13 +244,35 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       setDemoBusiness('');
   };
 
-  const handleGodModeLogin = (e: React.FormEvent) => {
+  const handleGodModeLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (masterPassword === 'Luis2021') {
-       onLogin({ id: 'god-mode', name: 'Super Admin', role: 'super_admin' });
-    } else {
-       setGodError('Acceso Denegado');
-       setMasterPassword('');
+    setGodError('');
+    setLoading(true);
+
+    try {
+        if (!adminEmail || !masterPassword) {
+            throw new Error("Ingresa email y contraseña");
+        }
+
+        const { data, error } = await supabase.auth.signInWithPassword({
+            email: adminEmail,
+            password: masterPassword
+        });
+
+        if (error) throw error;
+
+        if (data.user) {
+            onLogin({ 
+                id: 'god-mode', 
+                name: 'Super Admin', 
+                role: 'super_admin',
+                email: data.user.email 
+            });
+        }
+    } catch (err: any) {
+        setGodError(err.message || "Error de autenticación Cloud");
+    } finally {
+        setLoading(false);
     }
   };
 
@@ -273,12 +282,10 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         {/* LEFT PANEL: HERO SECTION */}
         <div className="w-full lg:w-[55%] relative z-10 flex flex-col justify-center px-8 lg:px-20 py-12 lg:py-8 bg-slate-50 overflow-hidden">
              
-             {/* Animated Blobs */}
              <div className="absolute top-0 -left-4 w-64 h-64 bg-indigo-300 rounded-full mix-blend-multiply filter blur-3xl opacity-60 animate-blob"></div>
              <div className="absolute top-0 -right-4 w-80 h-80 bg-emerald-200 rounded-full mix-blend-multiply filter blur-3xl opacity-60 animate-blob animation-delay-2000"></div>
              <div className="absolute -bottom-8 left-20 w-72 h-72 bg-pink-200 rounded-full mix-blend-multiply filter blur-3xl opacity-60 animate-blob animation-delay-4000"></div>
 
-             {/* Brand Header */}
              <div className="relative z-10 flex items-center gap-4 mb-12 select-none">
                  <div 
                     onClick={handleLogoClick}
@@ -289,7 +296,6 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                  <span onClick={handleLogoClick} className="text-4xl font-black text-slate-900 tracking-tighter font-sans cursor-pointer">PosGo!</span>
              </div>
 
-             {/* Main Content */}
              <div className="relative z-10 max-w-xl animate-fade-in-up">
                  <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/80 backdrop-blur-md border border-emerald-100 mb-8 shadow-sm hover:shadow-md transition-shadow cursor-default">
                      <span className="relative flex h-2 w-2">
@@ -326,7 +332,6 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                     </div>
                  </div>
 
-                 {/* Social Proofish */}
                  <div className="flex items-center gap-4 text-slate-400 text-xs font-bold font-sans">
                     <div className="flex -space-x-3">
                         <div className="w-8 h-8 rounded-full border-2 border-white bg-slate-200"></div>
@@ -340,7 +345,6 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
         {/* RIGHT PANEL: Login Form */}
         <div className="w-full lg:w-[45%] bg-white border-l border-slate-100 flex flex-col justify-center items-center p-6 lg:p-12 relative">
-            {/* Background Decor */}
             <div className="absolute top-0 right-0 w-full h-full overflow-hidden pointer-events-none">
                  <div className="absolute top-[-10%] right-[-10%] w-[40%] h-[40%] bg-gradient-to-br from-emerald-50 to-teal-50 rounded-full blur-3xl opacity-50"></div>
                  <div className="absolute bottom-[-10%] left-[-10%] w-[40%] h-[40%] bg-gradient-to-tr from-indigo-50 to-purple-50 rounded-full blur-3xl opacity-50"></div>
@@ -348,17 +352,14 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
             <div className="w-full max-w-[420px] relative z-10">
                 
-                {/* Mobile Logo */}
                 <div className="lg:hidden flex justify-center mb-8">
                     <button onClick={handleLogoClick} className="w-16 h-16 bg-slate-900 rounded-2xl flex items-center justify-center shadow-xl shadow-slate-200">
                         <Rocket className="w-8 h-8 text-white"/>
                     </button>
                 </div>
 
-                {/* Secret Trigger Area for Desktop */}
                 <div className="hidden lg:block absolute top-10 right-10 opacity-0 w-20 h-20 cursor-default z-50" onClick={handleLogoClick}></div>
 
-                {/* TABS SWITCHER */}
                 <div className="bg-slate-100/80 p-1.5 rounded-2xl flex relative mb-8 shadow-inner">
                     <div 
                         className={`absolute top-1.5 bottom-1.5 w-[calc(50%-6px)] bg-white rounded-xl shadow-sm transition-all duration-300 ease-out ${activeTab === 'DEMO' ? 'left-1.5' : 'left-[calc(50%+3px)]'}`}
@@ -386,15 +387,11 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                     </p>
                 </div>
 
-                {/* CARD CONTAINER */}
                 <div className="bg-white/70 backdrop-blur-xl border border-white/50 rounded-[2rem] p-6 lg:p-8 shadow-2xl shadow-slate-200/50 relative overflow-hidden">
-                   {/* Shine effect on card */}
                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-emerald-400/50 to-transparent opacity-50"></div>
 
                    {loginStep === 'FORM' ? (
                     <form onSubmit={handleSendCode} className="space-y-5 animate-fade-in font-sans relative z-10">
-                        
-                        {/* Demo Specific Fields */}
                         {activeTab === 'DEMO' && (
                             <div className="space-y-4">
                                 <div className="group">
@@ -475,8 +472,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                                     : 'bg-gradient-to-r from-indigo-600 to-violet-600 hover:to-violet-500 shadow-indigo-500/30'}
                             `}
                         >
-                             {/* Shimmer Effect */}
-                             <div className="absolute top-0 -left-[100%] w-full h-full bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer"></div>
+                            <div className="absolute top-0 -left-[100%] w-full h-full bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer"></div>
 
                             {loading ? <RefreshCw className="w-5 h-5 animate-spin"/> : (
                                 <>
@@ -541,7 +537,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             </div>
         </div>
 
-        {/* GOD MODE MODAL */}
+        {/* SUPER ADMIN MODAL (ONLY CLOUD SYNC) */}
         {showGodMode && (
              <div className="fixed inset-0 bg-white/90 backdrop-blur-md z-[100] flex items-center justify-center p-6 animate-fade-in font-sans">
                  <div className="bg-white w-full max-w-sm rounded-[2rem] p-8 shadow-2xl animate-fade-in-up text-center border border-slate-200">
@@ -549,9 +545,21 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                          <ShieldAlert className="w-8 h-8 text-red-600"/>
                      </div>
                      <h2 className="text-2xl font-black text-slate-900 mb-2">Super Admin</h2>
-                     <p className="text-slate-400 text-xs mb-6 font-bold uppercase tracking-wide">Acceso Restringido</p>
+                     <p className="text-slate-400 text-xs mb-6 font-bold uppercase tracking-wide">Acceso Maestro Cloud (Sincronizado)</p>
                      
                      <form onSubmit={handleGodModeLogin} className="space-y-4">
+                        <div className="relative group animate-fade-in">
+                            <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5 group-focus-within:text-red-500 transition-colors"/>
+                            <input 
+                                type="email" 
+                                value={adminEmail}
+                                onChange={e => setAdminEmail(e.target.value)}
+                                className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-900 font-bold outline-none focus:border-red-500 focus:bg-white transition-all placeholder:text-slate-300"
+                                placeholder="admin@posgo.com"
+                                required
+                            />
+                        </div>
+
                         <div className="relative group">
                             <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5 group-focus-within:text-red-500 transition-colors"/>
                             <input 
@@ -559,15 +567,21 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                                 value={masterPassword}
                                 onChange={e => setMasterPassword(e.target.value)}
                                 className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-900 font-bold outline-none focus:border-red-500 focus:bg-white transition-all placeholder:text-slate-300"
-                                placeholder="******"
-                                autoFocus
+                                placeholder="Contraseña Maestra"
+                                required
                             />
                         </div>
-                        {godError && <p className="text-red-600 text-xs font-bold">{godError}</p>}
+                        {godError && <p className="text-red-600 text-xs font-bold animate-fade-in">{godError}</p>}
                         
                         <div className="flex gap-3 mt-6">
                             <button type="button" onClick={() => setShowGodMode(false)} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-xl transition-colors text-sm">Cancelar</button>
-                            <button type="submit" className="flex-1 py-3 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition-all text-sm shadow-lg shadow-red-200">Entrar</button>
+                            <button 
+                                type="submit" 
+                                disabled={loading}
+                                className="flex-1 py-3 font-bold rounded-xl text-white transition-all text-sm shadow-lg flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 shadow-red-200"
+                            >
+                                {loading ? <RefreshCw className="w-4 h-4 animate-spin"/> : 'Acceder'}
+                            </button>
                         </div>
                      </form>
                  </div>

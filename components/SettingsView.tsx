@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { StoreSettings } from '../types';
 import { Save, Store, Receipt, Coins } from 'lucide-react';
