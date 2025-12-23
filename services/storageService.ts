@@ -1,495 +1,426 @@
-import { UserProfile, Product, Transaction, Purchase, StoreSettings, Customer, Supplier, CashShift, CashMovement, Lead, Store } from '../types';
-import { MOCK_PRODUCTS, DEFAULT_SETTINGS } from '../constants';
+
+import { UserProfile, Product, Transaction, Purchase, StoreSettings, Customer, Supplier, CashShift, CashMovement, Lead, Store, PaymentMethod, PurchaseItem } from '../types';
 import { supabase } from './supabase';
+import { DEFAULT_SETTINGS } from '../constants';
 
 const KEYS = {
-  SESSION: 'lumina_session',
-  PRODUCTS: 'lumina_products',
-  TRANSACTIONS: 'lumina_transactions',
-  PURCHASES: 'lumina_purchases',
-  SETTINGS: 'lumina_settings',
-  CUSTOMERS: 'lumina_customers',
-  SUPPLIERS: 'lumina_suppliers',
-  SHIFTS: 'lumina_shifts',
-  MOVEMENTS: 'lumina_movements',
-  ACTIVE_SHIFT_ID: 'lumina_active_shift'
+  SESSION: 'posgo_session',
+  ACTIVE_SHIFT_ID: 'posgo_active_shift'
 };
 
-const DEMO_TEMPLATE_ID = '00000000-0000-0000-0000-000000000000'; // Special UUID for the Master Template
+const DEMO_TEMPLATE_ID = '00000000-0000-0000-0000-000000000000'; 
 
-// Helper to check if we are in DEMO mode or REAL mode
 const isDemo = () => {
     const session = localStorage.getItem(KEYS.SESSION);
     if (!session) return true;
-    const user = JSON.parse(session);
-    return user.id === 'test-user-demo'; 
+    try {
+        const user = JSON.parse(session);
+        return user.id === 'test-user-demo' || user.email?.endsWith('@demo.posgo') || user.role === 'super_admin' || user.id === 'god-mode';
+    } catch { return true; }
 };
 
-// Cache for store_id to avoid repeated fetches
 let cachedStoreId: string | null = null;
 
-const getStoreId = async (): Promise<string | null> => {
-    if (isDemo()) return null;
+const getStoreId = async (): Promise<string> => {
+    if (isDemo()) return DEMO_TEMPLATE_ID;
     if (cachedStoreId) return cachedStoreId;
-
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
-
-    const { data, error } = await supabase.from('profiles').select('store_id').eq('id', user.id).single();
-    if (data) {
-        cachedStoreId = data.store_id;
-        return data.store_id;
-    }
-    return null;
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return DEMO_TEMPLATE_ID;
+        const { data } = await supabase.from('profiles').select('store_id').eq('id', user.id).maybeSingle();
+        if (data && data.store_id) {
+            cachedStoreId = data.store_id;
+            return data.store_id;
+        }
+    } catch (e) { console.warn("Error getting store_id:", e); }
+    return DEMO_TEMPLATE_ID;
 };
 
 export const StorageService = {
-  // === AUTH ===
-  saveSession: (user: UserProfile) => localStorage.setItem(KEYS.SESSION, JSON.stringify(user)),
+  saveSession: (user: UserProfile) => {
+      localStorage.setItem(KEYS.SESSION, JSON.stringify(user));
+      cachedStoreId = null; 
+  },
   getSession: (): UserProfile | null => {
     const s = localStorage.getItem(KEYS.SESSION);
-    return s ? JSON.parse(s) : null;
+    try { return s ? JSON.parse(s) : null; } catch { return null; }
   },
   clearSession: async () => {
     localStorage.removeItem(KEYS.SESSION);
+    localStorage.removeItem(KEYS.ACTIVE_SHIFT_ID);
     cachedStoreId = null;
     await supabase.auth.signOut();
   },
 
-  // === SUPER ADMIN / LEADS ===
-  saveLead: async (lead: Omit<Lead, 'id' | 'created_at'>) => {
-      try {
-          const { data, error } = await supabase.from('leads').upsert({
-              name: lead.name,
-              business_name: lead.business_name,
-              phone: lead.phone,
-              status: 'NEW'
-          }, { onConflict: 'phone' }).select();
-          
-          if (error) throw error;
-      } catch (e) {
-          console.error("Critical error saving lead:", e);
-      }
-  },
-  getLeads: async (): Promise<Lead[]> => {
-      const { data, error } = await supabase.from('leads').select('*').order('created_at', { ascending: false });
-      if (error) return [];
-      return data || [];
-  },
-  deleteLead: async (leadId: string) => {
-      await supabase.from('leads').delete().eq('id', leadId);
-  },
-  getAllStores: async (): Promise<Store[]> => {
-      const { data, error } = await supabase.from('stores').select('*').order('created_at', { ascending: false });
-      if (error || !data) return [];
-      return data;
-  },
-  deleteStore: async (storeId: string) => {
-      await supabase.from('stores').delete().eq('id', storeId);
-  },
-
-  // === DEMO MANAGEMENT (CLOUD BASED) ===
-  
-  // 1. Fetch Template from Supabase (Used by Super Admin AND when initializing new Demos)
-  getDemoTemplate: async (): Promise<Product[]> => {
-      try {
-          const { data: productsData, error } = await supabase
-              .from('products')
-              .select('*')
-              .eq('store_id', DEMO_TEMPLATE_ID);
-          
-          if (error || !productsData || productsData.length === 0) {
-              return MOCK_PRODUCTS; // Fallback if DB is empty
-          }
-
-          const { data: imagesData } = await supabase
-              .from('product_images')
-              .select('*')
-              .eq('store_id', DEMO_TEMPLATE_ID);
-
-          return productsData.map((p: any) => {
-              const prodImages = imagesData 
-                  ? imagesData.filter((img: any) => img.product_id === p.id).map((img: any) => img.image_data)
-                  : [];
-
-              return {
-                  id: p.id,
-                  name: p.name,
-                  price: Number(p.price),
-                  category: p.category,
-                  stock: Number(p.stock),
-                  barcode: p.barcode,
-                  hasVariants: false, // Simplification for demo persistence
-                  variants: [],
-                  images: prodImages 
-              };
-          });
-      } catch (e) {
-          console.error("Error fetching demo template:", e);
-          return MOCK_PRODUCTS;
-      }
-  },
-
-  // 2. Save Template to Supabase (Only Super Admin calls this)
-  saveDemoTemplate: async (products: Product[]) => {
-      // Logic: Sync the provided list with the DB for DEMO_TEMPLATE_ID
-      // A simple strategy: Delete all for this ID and Re-insert (for full sync)
-      // Or upsert. Let's stick to Upsert/Delete logic handled by Super Admin view individually or bulk.
-      
-      // For the "Save Product" button in Super Admin:
-      // It calls saveProductWithImages but we need to intercept it or use a specific function.
-      // We will reuse saveProducts but pass the DEMO_TEMPLATE_ID manually.
-      
-      // This function specifically handles the bulk save or single updates if passed as array
-      for (const p of products) {
-          const payload: any = {
-              id: p.id,
-              name: p.name,
-              price: p.price,
-              stock: p.stock,
-              category: p.category,
-              barcode: p.barcode,
-              store_id: DEMO_TEMPLATE_ID
-          };
-          await supabase.from('products').upsert(payload);
-          
-          // Handle images
-          if (p.images) {
-              await supabase.from('product_images').delete().eq('product_id', p.id).eq('store_id', DEMO_TEMPLATE_ID);
-              if (p.images.length > 0) {
-                  const imageInserts = p.images.map(imgData => ({
-                      product_id: p.id,
-                      image_data: imgData,
-                      store_id: DEMO_TEMPLATE_ID
-                  }));
-                  await supabase.from('product_images').insert(imageInserts);
-              }
-          }
-      }
-  },
-
-  deleteDemoProduct: async (productId: string) => {
-      await supabase.from('products').delete().eq('id', productId).eq('store_id', DEMO_TEMPLATE_ID);
-  },
-
-  // === PRODUCTS ===
   getProducts: async (): Promise<Product[]> => {
-    if (isDemo()) {
-        const s = localStorage.getItem(KEYS.PRODUCTS);
-        if (!s) {
-            // If local storage is empty in demo, try fetching template (Async init required in App)
-            return MOCK_PRODUCTS; 
-        }
-        return JSON.parse(s);
-    } else {
-        const storeId = await getStoreId();
-        if(!storeId) return []; 
-
-        const { data: productsData, error: productsError } = await supabase.from('products').select('*').eq('store_id', storeId);
-        if (productsError || !productsData) return [];
-
-        const { data: imagesData } = await supabase.from('product_images').select('*').eq('store_id', storeId);
-        
-        return productsData.map((p: any) => {
-            const prodImages = imagesData 
-                ? imagesData.filter((img: any) => img.product_id === p.id).map((img: any) => img.image_data)
-                : [];
-
-            return {
-                id: p.id,
-                name: p.name,
-                price: Number(p.price),
-                category: p.category,
-                stock: Number(p.stock),
-                barcode: p.barcode,
-                hasVariants: false, 
-                variants: [],
-                images: prodImages 
-            };
-        });
+    const storeId = await getStoreId();
+    const { data: productsData, error: prodErr } = await supabase.from('products').select('*').eq('store_id', storeId).order('name', { ascending: true });
+    if (prodErr) console.error("Error fetching products:", prodErr);
+    if (!productsData || productsData.length === 0) {
+        if (storeId === DEMO_TEMPLATE_ID) return [];
+        return await StorageService.getDemoTemplate();
     }
+    const { data: imagesData } = await supabase.from('product_images').select('*').eq('store_id', storeId);
+    return productsData.map((p: any) => ({ 
+        id: p.id, name: p.name, price: Number(p.price), category: p.category, 
+        stock: Number(p.stock), barcode: p.barcode, 
+        hasVariants: p.has_variants,
+        variants: Array.isArray(p.variants) ? p.variants : [], 
+        images: imagesData ? imagesData.filter((img: any) => img.product_id === p.id).map((img: any) => img.image_data) : [], 
+        cost: Number(p.cost || 0), 
+        isPack: p.is_pack, 
+        packItems: Array.isArray(p.pack_items) ? p.pack_items : []
+    }));
   },
   
-  saveProductWithImages: async (product: Product) => {
-      if (isDemo()) {
-          // This saves to the CURRENT active local session (Browser)
-          const products = JSON.parse(localStorage.getItem(KEYS.PRODUCTS) || '[]');
-          const index = products.findIndex((p: any) => p.id === product.id);
-          let updatedProducts;
-          if (index >= 0) {
-              updatedProducts = products.map((p: any) => p.id === product.id ? product : p);
-          } else {
-              updatedProducts = [...products, product];
-          }
-          localStorage.setItem(KEYS.PRODUCTS, JSON.stringify(updatedProducts));
-      } else {
-          const storeId = await getStoreId();
-          if (!storeId) return;
-
-          const payload: any = {
-                id: product.id,
-                name: product.name,
-                price: product.price,
-                stock: product.stock,
-                category: product.category,
-                barcode: product.barcode,
-                store_id: storeId
-          };
-          
-          const { error } = await supabase.from('products').upsert(payload);
-          if (error) {
-              console.error('Error saving product info', error);
-              return;
-          }
-
-          if (product.images) {
-              await supabase.from('product_images').delete().eq('product_id', product.id);
-              if (product.images.length > 0) {
-                  const imageInserts = product.images.map(imgData => ({
-                      product_id: product.id,
-                      image_data: imgData,
-                      store_id: storeId
-                  }));
-                  await supabase.from('product_images').insert(imageInserts);
-              }
-          }
+  saveProducts: async (products: Product[]) => {
+      const storeId = await getStoreId();
+      for (const p of products) {
+          // Fix: Accessing p.packItems instead of incorrect p.pack_items (which doesn't exist on Product interface)
+          await supabase.from('products').upsert({ 
+              id: p.id, name: p.name, price: p.price, stock: p.stock, 
+              category: p.category, barcode: p.barcode, variants: p.variants || [], 
+              cost: p.cost || 0, store_id: storeId, has_variants: p.hasVariants,
+              is_pack: p.isPack, pack_items: p.packItems || []
+          });
       }
   },
 
-  saveProducts: async (products: Product[]) => {
-    if (isDemo()) {
-        localStorage.setItem(KEYS.PRODUCTS, JSON.stringify(products));
-    } else {
-        const storeId = await getStoreId();
-        if (!storeId) return;
-
-        for (const p of products) {
-            const payload: any = {
-                id: p.id,
-                name: p.name,
-                price: p.price,
-                stock: p.stock,
-                category: p.category,
-                barcode: p.barcode,
-                store_id: storeId
-            };
-            await supabase.from('products').upsert(payload);
-        }
+  saveProductWithImages: async (p: Product) => {
+    const storeId = await getStoreId();
+    await supabase.from('products').upsert({ 
+        id: p.id, name: p.name, price: p.price, stock: p.stock, 
+        category: p.category, barcode: p.barcode, variants: p.variants || [], 
+        cost: p.cost || 0, store_id: storeId, has_variants: p.hasVariants,
+        is_pack: p.isPack, pack_items: p.packItems || []
+    });
+    if (p.images) {
+        await supabase.from('product_images').delete().eq('product_id', p.id).eq('store_id', storeId);
+        const imageInserts = p.images.map(img => ({ product_id: p.id, image_data: img, store_id: storeId }));
+        if (imageInserts.length > 0) await supabase.from('product_images').insert(imageInserts);
     }
   },
 
-  // === TRANSACTIONS & OTHERS ===
+  saveTransaction: async (t: Transaction) => {
+    const storeId = await getStoreId();
+    const dbTransaction = {
+        id: t.id,
+        date: t.date,
+        items: JSON.stringify(t.items),
+        payments: JSON.stringify(t.payments),
+        subtotal: t.subtotal,
+        tax: t.tax,
+        discount: t.discount,
+        total: t.total,
+        payment_method: t.paymentMethod,
+        profit: t.profit,
+        shift_id: t.shiftId, 
+        store_id: storeId,
+        status: t.status || 'COMPLETED'
+    };
+    const { error } = await supabase.from('transactions').insert(dbTransaction);
+    if (error) throw new Error(error.message || "Error al guardar transacción");
+  },
+
+  cancelTransaction: async (t: Transaction, localShift: CashShift, refundMethodChoice?: PaymentMethod | 'original') => {
+      const storeId = await getStoreId();
+      
+      const { data: currentTrans } = await supabase.from('transactions').select('status').eq('id', t.id).maybeSingle();
+      if (currentTrans?.status === 'CANCELED') throw new Error("Venta ya anulada.");
+
+      const { data: dbShift } = await supabase.from('shifts').select('*').eq('id', localShift.id).maybeSingle();
+      if (!dbShift) throw new Error("Error obteniendo datos del turno.");
+
+      const items = Array.isArray(t.items) ? t.items : JSON.parse(t.items as any);
+      for (const item of items) {
+          const { data: p } = await supabase.from('products').select('*').eq('id', item.id).eq('store_id', storeId).maybeSingle();
+          if (p) {
+              const returnQty = Number(item.quantity) || 0;
+              let variants = Array.isArray(p.variants) ? p.variants : (typeof p.variants === 'string' ? JSON.parse(p.variants) : []);
+              if (item.selectedVariantId && variants.length > 0) {
+                  variants = variants.map((v: any) => v.id === item.selectedVariantId ? { ...v, stock: (Number(v.stock) || 0) + returnQty } : v);
+              }
+              await supabase.from('products').update({ stock: (Number(p.stock) || 0) + returnQty, variants }).eq('id', p.id).eq('store_id', storeId);
+          }
+      }
+
+      const originalPayments = Array.isArray(t.payments) ? t.payments : (t.payments ? JSON.parse(t.payments as any) : []);
+      let rCash = 0, rYape = 0, rPlin = 0, rCard = 0;
+      const totalAmount = Number(t.total);
+
+      if (!refundMethodChoice || refundMethodChoice === 'original') {
+          if (originalPayments.length > 0) {
+              originalPayments.forEach((p: any) => {
+                  const amt = Number(p.amount) || 0;
+                  if (p.method === 'cash') rCash += amt;
+                  else if (p.method === 'yape') rYape += amt;
+                  else if (p.method === 'plin') rPlin += amt;
+                  else if (p.method === 'card') rCard += amt;
+              });
+          } else {
+              if (t.paymentMethod === 'cash') rCash = totalAmount;
+              else if (t.paymentMethod === 'yape') rYape = totalAmount;
+              else if (t.paymentMethod === 'plin') rPlin = totalAmount;
+              else if (t.paymentMethod === 'card') rCard = totalAmount;
+          }
+      } else {
+          if (refundMethodChoice === 'cash') rCash = totalAmount;
+          else if (refundMethodChoice === 'yape') rYape = totalAmount;
+          else if (refundMethodChoice === 'plin') rPlin = totalAmount;
+          else if (refundMethodChoice === 'card') rCard = totalAmount;
+      }
+
+      const updatedShift = {
+          total_sales_cash: Math.max(0, Number(dbShift.total_sales_cash || 0) - rCash),
+          total_sales_yape: Math.max(0, Number(dbShift.total_sales_yape || 0) - rYape),
+          total_sales_plin: Math.max(0, Number(dbShift.total_sales_plin || 0) - rPlin),
+          total_sales_card: Math.max(0, Number(dbShift.total_sales_card || 0) - rCard),
+          total_sales_digital: Math.max(0, Number(dbShift.total_sales_digital || 0) - (rYape + rPlin + rCard))
+      };
+      await supabase.from('shifts').update(updatedShift).eq('id', dbShift.id);
+
+      await supabase.from('movements').insert({
+          id: crypto.randomUUID(), shift_id: dbShift.id, type: 'OUT', amount: totalAmount,
+          description: `ANULACIÓN #${t.id.slice(-6).toUpperCase()} (Vía ${refundMethodChoice || 'Original'})`,
+          timestamp: new Date().toISOString(), store_id: storeId
+      });
+
+      await supabase.from('transactions').update({ status: 'CANCELED' }).eq('id', t.id);
+  },
+
   getTransactions: async (): Promise<Transaction[]> => {
-    if (isDemo()) {
-        const s = localStorage.getItem(KEYS.TRANSACTIONS);
-        return s ? JSON.parse(s) : [];
-    } else {
-        const storeId = await getStoreId();
-        if(!storeId) return [];
-        const { data, error } = await supabase.from('transactions').select('*').eq('store_id', storeId).order('date', { ascending: false });
-        if (error || !data) return [];
-        return data.map((t: any) => ({
-            id: t.id,
-            date: t.date,
-            items: t.items,
-            subtotal: Number(t.subtotal),
-            tax: Number(t.tax),
-            discount: Number(t.discount),
-            total: Number(t.total),
-            paymentMethod: t.payment_method,
-            payments: t.payments,
-            profit: Number(t.profit),
-            shiftId: t.shift_id
-        }));
-    }
-  },
-  saveTransaction: async (transaction: Transaction) => {
-    if (isDemo()) {
-        const currentString = localStorage.getItem(KEYS.TRANSACTIONS);
-        const current = currentString ? JSON.parse(currentString) : [];
-        localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify([transaction, ...current]));
-    } else {
-        const storeId = await getStoreId();
-        if (!storeId) return;
-        const { error } = await supabase.from('transactions').insert({
-            id: transaction.id,
-            shift_id: transaction.shiftId,
-            store_id: storeId,
-            total: transaction.total,
-            subtotal: transaction.subtotal,
-            tax: transaction.tax,
-            discount: transaction.discount,
-            items: transaction.items,
-            payments: transaction.payments,
-            payment_method: transaction.paymentMethod,
-            date: transaction.date
-        });
-        if (error) console.error("Error saving transaction", error);
-    }
+    const storeId = await getStoreId();
+    const { data } = await supabase.from('transactions').select('*').eq('store_id', storeId).order('date', { ascending: false });
+    return (data || []).map((t: any) => ({ 
+        ...t, 
+        shiftId: t.shift_id || t.shiftId, 
+        items: typeof t.items === 'string' ? JSON.parse(t.items) : t.items, 
+        payments: typeof t.payments === 'string' ? JSON.parse(t.payments) : t.payments 
+    }));
   },
 
   getPurchases: async (): Promise<Purchase[]> => {
-    const s = localStorage.getItem(KEYS.PURCHASES);
-    return s ? JSON.parse(s) : [];
-  },
-  savePurchase: async (purchase: Purchase) => {
-    const s = localStorage.getItem(KEYS.PURCHASES);
-    const current = s ? JSON.parse(s) : [];
-    localStorage.setItem(KEYS.PURCHASES, JSON.stringify([purchase, ...current]));
+    const storeId = await getStoreId();
+    const { data } = await supabase.from('purchases').select('*').eq('store_id', storeId).order('date', { ascending: false });
+    return (data || []).map((p: any) => ({
+        ...p,
+        supplierId: p.supplier_id,
+        invoiceNumber: p.invoice_number,
+        docType: p.doc_type,
+        dueDate: p.due_date,
+        paymentCondition: p.payment_condition,
+        payFromCash: p.pay_from_cash,
+        taxIncluded: p.tax_included,
+        amountPaid: Number(p.amount_paid || 0),
+        items: typeof p.items === 'string' ? JSON.parse(p.items) : p.items
+    }));
   },
 
-  getSettings: async (): Promise<StoreSettings> => {
-    if (isDemo()) {
-        const s = localStorage.getItem(KEYS.SETTINGS);
-        return s ? JSON.parse(s) : DEFAULT_SETTINGS;
-    } else {
-        const storeId = await getStoreId();
-        if (!storeId) return DEFAULT_SETTINGS;
-        const { data } = await supabase.from('stores').select('settings').eq('id', storeId).single();
-        return data?.settings || DEFAULT_SETTINGS;
-    }
+  savePurchase: async (p: Purchase) => {
+    const storeId = await getStoreId();
+    const dbPayload = {
+        id: p.id, 
+        reference: p.reference, 
+        date: p.date, 
+        due_date: p.dueDate, 
+        supplier_id: p.supplierId,
+        invoice_number: p.invoiceNumber, 
+        doc_type: p.docType, 
+        subtotal: p.subtotal, 
+        tax: p.tax, 
+        total: p.total,
+        amount_paid: p.amountPaid, 
+        payment_method: p.paymentMethod,
+        payment_condition: p.paymentCondition, 
+        pay_from_cash: p.payFromCash,
+        tax_included: p.taxIncluded, 
+        items: JSON.stringify(p.items), 
+        status: p.status,
+        received: p.received, 
+        store_id: storeId
+    };
+    const { error } = await supabase.from('purchases').upsert(dbPayload);
+    if (error) throw new Error(error.message || `Error DB (${error.code})`);
   },
-  saveSettings: async (settings: StoreSettings) => {
-    if (isDemo()) {
-        localStorage.setItem(KEYS.SETTINGS, JSON.stringify(settings));
-    } else {
-        const storeId = await getStoreId();
-        if (storeId) {
-             await supabase.from('stores').update({ settings }).eq('id', storeId);
+
+  confirmReceptionAndSyncStock: async (purchase: Purchase) => {
+    const storeId = await getStoreId();
+    for (const item of purchase.items) {
+        const { data: p } = await supabase.from('products').select('*').eq('id', item.productId).eq('store_id', storeId).maybeSingle();
+        if (p) {
+            let newStock = Number(p.stock) + item.quantity;
+            let variants = Array.isArray(p.variants) ? p.variants : [];
+            let currentPrice = p.price;
+
+            if (item.variantId) {
+                const vIdx = variants.findIndex((v: any) => v.id === item.variantId);
+                if (vIdx !== -1) {
+                    variants[vIdx].stock = (variants[vIdx].stock || 0) + item.quantity;
+                    variants[vIdx].price = item.newSellPrice || variants[vIdx].price;
+                } else if (item.variantName) {
+                    variants.push({
+                        id: item.variantId,
+                        name: item.variantName,
+                        price: item.newSellPrice || p.price,
+                        stock: item.quantity
+                    });
+                }
+                newStock = variants.reduce((sum: number, v: any) => sum + (Number(v.stock) || 0), 0);
+            } else {
+                currentPrice = item.newSellPrice || p.price;
+            }
+
+            await supabase.from('products').update({ 
+                stock: newStock, 
+                cost: item.cost, 
+                price: currentPrice,
+                variants,
+                has_variants: variants.length > 0
+            }).eq('id', p.id).eq('store_id', storeId);
         }
     }
+    await supabase.from('purchases').update({ status: 'RECIBIDO', received: 'YES' }).eq('id', purchase.id).eq('store_id', storeId);
   },
 
-  getCustomers: async (): Promise<Customer[]> => {
-    if (isDemo()) {
-        const s = localStorage.getItem(KEYS.CUSTOMERS);
-        return s ? JSON.parse(s) : [];
-    } else {
-        const storeId = await getStoreId();
-        if(!storeId) return [];
-        const { data } = await supabase.from('customers').select('*').eq('store_id', storeId);
-        return data || [];
+  revertReceptionAndSyncStock: async (purchase: Purchase) => {
+    const storeId = await getStoreId();
+    for (const item of purchase.items) {
+        const { data: p } = await supabase.from('products').select('*').eq('id', item.productId).eq('store_id', storeId).maybeSingle();
+        if (p) {
+            let variants = Array.isArray(p.variants) ? p.variants : [];
+            let newStock = Math.max(0, Number(p.stock) - item.quantity);
+            
+            if (item.variantId) {
+                const vIdx = variants.findIndex((v: any) => v.id === item.variantId);
+                if (vIdx !== -1) {
+                    variants[vIdx].stock = Math.max(0, (Number(variants[vIdx].stock) || 0) - item.quantity);
+                }
+                newStock = variants.reduce((sum: number, v: any) => sum + (Number(v.stock) || 0), 0);
+            }
+            
+            await supabase.from('products').update({ stock: newStock, variants }).eq('id', p.id).eq('store_id', storeId);
+        }
     }
+    await supabase.from('purchases').update({ status: 'CONFIRMADO', received: 'NO' }).eq('id', purchase.id).eq('store_id', storeId);
   },
-  
-  getSuppliers: (): Supplier[] => {
-    const s = localStorage.getItem(KEYS.SUPPLIERS);
-    return s ? JSON.parse(s) : [];
-  },
-  saveSupplier: (supplier: Supplier) => {
-    const s = localStorage.getItem(KEYS.SUPPLIERS);
-    const current = s ? JSON.parse(s) : [];
-    localStorage.setItem(KEYS.SUPPLIERS, JSON.stringify([...current, supplier]));
+
+  saveShift: async (s: CashShift) => {
+    const storeId = await getStoreId();
+    await supabase.from('shifts').upsert({ 
+        id: s.id, startTime: s.startTime, endTime: s.endTime, startAmount: s.startAmount, endAmount: s.endAmount, status: s.status,
+        total_sales_cash: s.totalSalesCash || 0, total_sales_digital: s.totalSalesDigital || 0,
+        total_sales_yape: s.totalSalesYape || 0, total_sales_plin: s.totalSalesPlin || 0, total_sales_card: s.totalSalesCard || 0,
+        store_id: storeId 
+    });
   },
 
   getShifts: async (): Promise<CashShift[]> => {
-    if (isDemo()) {
-        const s = localStorage.getItem(KEYS.SHIFTS);
-        return s ? JSON.parse(s) : [];
-    } else {
-        const storeId = await getStoreId();
-        if(!storeId) return [];
-        const { data } = await supabase.from('cash_shifts').select('*').eq('store_id', storeId).order('created_at', { ascending: false });
-        if (!data) return [];
-        return data.map((s: any) => ({
-            id: s.id,
-            startTime: s.start_time,
-            endTime: s.end_time,
-            startAmount: Number(s.start_amount),
-            endAmount: Number(s.end_amount),
-            status: s.status,
-            totalSalesCash: Number(s.total_sales_cash),
-            totalSalesDigital: Number(s.total_sales_digital)
-        }));
-    }
-  },
-  saveShift: async (shift: CashShift) => {
-    if (isDemo()) {
-        const s = localStorage.getItem(KEYS.SHIFTS);
-        const shifts = s ? JSON.parse(s) : [];
-        const idx = shifts.findIndex((x: any) => x.id === shift.id);
-        if (idx >= 0) shifts[idx] = shift;
-        else shifts.unshift(shift);
-        localStorage.setItem(KEYS.SHIFTS, JSON.stringify(shifts));
-    } else {
-         const storeId = await getStoreId();
-         if (!storeId) return;
-         const payload: any = {
-             id: shift.id,
-             start_time: shift.startTime,
-             end_time: shift.endTime,
-             start_amount: shift.startAmount,
-             end_amount: shift.endAmount,
-             status: shift.status,
-             total_sales_cash: shift.totalSalesCash,
-             total_sales_digital: shift.totalSalesDigital,
-             store_id: storeId
-         };
-         await supabase.from('cash_shifts').upsert(payload);
-    }
-  },
-  
-  getMovements: async (): Promise<CashMovement[]> => {
-      if (isDemo()) {
-          const s = localStorage.getItem(KEYS.MOVEMENTS);
-          return s ? JSON.parse(s) : [];
-      } else {
-           const storeId = await getStoreId();
-           if(!storeId) return [];
-           const { data } = await supabase.from('cash_movements').select('*').eq('store_id', storeId);
-           if (!data) return [];
-           return data.map((m: any) => ({
-               id: m.id,
-               shiftId: m.shift_id,
-               type: m.type,
-               amount: Number(m.amount),
-               description: m.description,
-               timestamp: m.timestamp
-           }));
-      }
-  },
-  saveMovement: async (movement: CashMovement) => {
-      if (isDemo()) {
-          const s = localStorage.getItem(KEYS.MOVEMENTS);
-          const moves = s ? JSON.parse(s) : [];
-          localStorage.setItem(KEYS.MOVEMENTS, JSON.stringify([...moves, movement]));
-      } else {
-          const storeId = await getStoreId();
-          if (!storeId) return;
-          await supabase.from('cash_movements').insert({
-              id: movement.id,
-              shift_id: movement.shiftId,
-              store_id: storeId,
-              type: movement.type,
-              amount: movement.amount,
-              description: movement.description,
-              timestamp: movement.timestamp
-          });
-      }
+    const storeId = await getStoreId();
+    const { data } = await supabase.from('shifts').select('*').eq('store_id', storeId).order('startTime', { ascending: false });
+    return (data || []).map((s: any) => ({
+        id: s.id, startTime: s.startTime, endTime: s.endTime, startAmount: Number(s.startAmount || 0), endAmount: Number(s.endAmount || 0), status: s.status,
+        totalSalesCash: Number(s.total_sales_cash || 0), totalSalesDigital: Number(s.total_sales_digital || 0),
+        totalSalesYape: Number(s.total_sales_yape || 0), totalSalesPlin: Number(s.total_sales_plin || 0), totalSalesCard: Number(s.total_sales_card || 0)
+    }));
   },
 
-  getActiveShiftId: (): string | null => {
-      return localStorage.getItem(KEYS.ACTIVE_SHIFT_ID);
+  saveMovement: async (m: CashMovement) => {
+    const storeIdValue = await getStoreId();
+    await supabase.from('movements').insert({ ...m, shift_id: m.shiftId, store_id: storeIdValue });
   },
+
+  getMovements: async (): Promise<CashMovement[]> => {
+    const storeId = await getStoreId();
+    const { data } = await supabase.from('movements').select('*').eq('store_id', storeId).order('timestamp', { ascending: false });
+    return (data || []).map((m: any) => ({ ...m, shiftId: m.shift_id }));
+  },
+
+  getCustomers: async (): Promise<Customer[]> => {
+    const storeId = await getStoreId();
+    const { data: customersData } = await supabase.from('customers').select('*').eq('store_id', storeId);
+    return customersData || [];
+  },
+
+  getSuppliers: async (): Promise<Supplier[]> => {
+    const storeId = await getStoreId();
+    const { data: suppliersData } = await supabase.from('suppliers').select('*').eq('store_id', storeId).order('name', { ascending: true });
+    return suppliersData || [];
+  },
+
+  saveSupplier: async (s: Supplier) => {
+    const storeId = await getStoreId();
+    // Ajustado para coincidir exactamente con la estructura de tabla proporcionada por el usuario
+    const { error } = await supabase.from('suppliers').upsert({ 
+        id: s.id, 
+        name: s.name, 
+        contact: s.contact || s.phone || '', // Mapeamos contacto o teléfono al campo contact de la BD
+        store_id: storeId 
+    });
+    if (error) throw error;
+  },
+
+  getSettings: async (): Promise<StoreSettings> => {
+    const storeId = await getStoreId();
+    const { data: storeData } = await supabase.from('stores').select('settings').eq('id', storeId).maybeSingle();
+    return storeData?.settings || DEFAULT_SETTINGS;
+  },
+
+  saveSettings: async (settings: StoreSettings) => {
+    const storeId = await getStoreId();
+    await supabase.from('stores').update({ settings }).eq('id', storeId);
+  },
+
+  getActiveShiftId: (): string | null => localStorage.getItem(KEYS.ACTIVE_SHIFT_ID),
   setActiveShiftId: (id: string | null) => {
-      if(id) localStorage.setItem(KEYS.ACTIVE_SHIFT_ID, id);
-      else localStorage.removeItem(KEYS.ACTIVE_SHIFT_ID);
+    if (id) localStorage.setItem(KEYS.ACTIVE_SHIFT_ID, id);
+    else localStorage.removeItem(KEYS.ACTIVE_SHIFT_ID);
+  },
+
+  getDemoTemplate: async (): Promise<Product[]> => {
+    const { data: productsData } = await supabase.from('products').select('*').eq('store_id', DEMO_TEMPLATE_ID).order('name', { ascending: true });
+    if (!productsData) return [];
+    const { data: imagesData } = await supabase.from('product_images').select('*').eq('store_id', DEMO_TEMPLATE_ID);
+    return productsData.map((p: any) => ({
+        id: p.id, name: p.name, price: Number(p.price), category: p.category, 
+        stock: Number(p.stock), barcode: p.barcode, 
+        hasVariants: p.has_variants, variants: Array.isArray(p.variants) ? p.variants : [], 
+        images: imagesData ? imagesData.filter((img: any) => img.product_id === p.id).map((img: any) => img.image_data) : [], 
+        cost: Number(p.cost || 0), 
+        isPack: p.is_pack, packItems: Array.isArray(p.pack_items) ? p.pack_items : []
+    }));
+  },
+
+  saveDemoProductToTemplate: async (product: Product) => {
+      const { error } = await supabase.from('products').upsert({ 
+          id: product.id, name: product.name, price: product.price, stock: product.stock, 
+          category: product.category, barcode: product.barcode, variants: product.variants || [], 
+          cost: product.cost || 0, store_id: DEMO_TEMPLATE_ID, has_variants: product.hasVariants,
+          is_pack: product.isPack, pack_items: product.packItems || []
+      });
+      return { success: !error, error };
+  },
+
+  deleteDemoProduct: async (productId: string) => {
+      await supabase.from('product_images').delete().eq('product_id', productId).eq('store_id', DEMO_TEMPLATE_ID);
+      await supabase.from('products').delete().eq('id', productId).eq('store_id', DEMO_TEMPLATE_ID);
+  },
+
+  getLeads: async (): Promise<Lead[]> => {
+      const { data } = await supabase.from('leads').select('*').order('created_at', { ascending: false });
+      return data || [];
+  },
+
+  saveLead: async (lead: Omit<Lead, 'id' | 'created_at'>) => {
+      await supabase.from('leads').upsert({ ...lead, status: 'NEW' }, { onConflict: 'phone' });
+  },
+
+  getAllStores: async (): Promise<Store[]> => {
+      const { data } = await supabase.from('stores').select('*').order('created_at', { ascending: false });
+      return data || [];
   },
 
   resetDemoData: async () => {
-      // CRITICAL: Fetch the Cloud-Stored Demo Template
-      const template = await StorageService.getDemoTemplate();
-      
-      // Initialize Session with Template
-      localStorage.setItem(KEYS.PRODUCTS, JSON.stringify(template));
-      
-      localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify([]));
-      localStorage.setItem(KEYS.PURCHASES, JSON.stringify([]));
-      localStorage.setItem(KEYS.SHIFTS, JSON.stringify([]));
-      localStorage.setItem(KEYS.MOVEMENTS, JSON.stringify([]));
-      localStorage.setItem(KEYS.CUSTOMERS, JSON.stringify([]));
-      localStorage.setItem(KEYS.SUPPLIERS, JSON.stringify([]));
-      localStorage.setItem(KEYS.SETTINGS, JSON.stringify(DEFAULT_SETTINGS));
       localStorage.removeItem(KEYS.ACTIVE_SHIFT_ID);
+      cachedStoreId = null;
   }
 };
