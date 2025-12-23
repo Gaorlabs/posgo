@@ -1,12 +1,15 @@
 
 export enum ViewState {
   POS,
-  ADMIN,
+  SHIFTS,
   INVENTORY,
   PURCHASES,
-  REPORTS,
+  ANALYTICS,
   SETTINGS,
-  SUPER_ADMIN
+  SUPER_ADMIN,
+  // Added to fix compilation errors in App.tsx
+  ADMIN,
+  REPORTS
 }
 
 export interface ProductVariant {
@@ -18,7 +21,7 @@ export interface ProductVariant {
 
 export interface PackItem {
     productId: string;
-    productName: string; // Cached name for display
+    productName: string; 
     quantity: number;
 }
 
@@ -31,8 +34,8 @@ export interface Product {
   barcode?: string;
   hasVariants?: boolean;
   variants?: ProductVariant[];
-  isPack?: boolean;     // New: Identifies if this is a bundle
-  packItems?: PackItem[]; // New: List of contents
+  isPack?: boolean;     
+  packItems?: PackItem[]; 
   images?: string[]; 
   description?: string;
   cost?: number; 
@@ -45,7 +48,7 @@ export interface CartItem extends Product {
   discount?: number;
 }
 
-export type PaymentMethod = 'cash' | 'card' | 'yape' | 'plin' | 'transfer';
+export type PaymentMethod = 'cash' | 'card' | 'yape' | 'plin' | 'transfer' | 'credit';
 
 export interface PaymentDetail {
   method: PaymentMethod;
@@ -64,7 +67,8 @@ export interface Transaction {
   payments?: PaymentDetail[];
   profit: number;
   shiftId?: string;
-  storeId?: string; // Supabase linkage
+  storeId?: string; 
+  status?: 'COMPLETED' | 'CANCELED';
 }
 
 export interface StoreSettings {
@@ -80,7 +84,7 @@ export interface UserProfile {
   id: string;
   name: string;
   role: 'admin' | 'cashier' | 'super_admin' | 'owner';
-  storeId?: string; // Link to Supabase Store
+  storeId?: string; 
   email?: string;
 }
 
@@ -93,6 +97,9 @@ export interface CashShift {
   status: 'OPEN' | 'CLOSED';
   totalSalesCash: number;
   totalSalesDigital: number;
+  totalSalesYape: number;
+  totalSalesPlin: number;
+  totalSalesCard: number;
 }
 
 export interface CashMovement {
@@ -115,20 +122,44 @@ export interface Supplier {
   id: string;
   name: string;
   contact?: string;
+  phone?: string;
+  email?: string;
 }
 
 export interface PurchaseItem {
   productId: string;
+  productName?: string; 
+  variantId?: string;     // Identificador de la variante
+  variantName?: string;   // Nombre descriptivo (ej: XL, 1L, etc)
   quantity: number;
   cost: number;
+  isBonus?: boolean;
+  newSellPrice?: number;
+  currentPrice?: number; 
 }
+
+export type PurchaseStatus = 'BORRADOR' | 'CONFIRMADO' | 'RECIBIDO' | 'CANCELADO';
 
 export interface Purchase {
   id: string;
+  reference: string;
   date: string;
+  dueDate?: string;
   supplierId: string;
+  invoiceNumber?: string;
+  docType?: 'FACTURA' | 'BOLETA' | 'GUIA' | 'OTRO';
+  subtotal: number;
+  tax: number;
   total: number;
+  amountPaid: number;
+  paymentMethod?: string;
+  paymentCondition: 'CONTADO' | 'CREDITO';
+  payFromCash: boolean;
+  taxIncluded: boolean;
   items: PurchaseItem[];
+  status: PurchaseStatus;
+  received: 'YES' | 'NO';
+  store_id?: string;
 }
 
 export interface Lead {
